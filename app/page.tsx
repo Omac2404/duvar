@@ -28,6 +28,7 @@ type Envelope = {
   color: EnvelopeColor;
   sticker?: Sticker;
   luck: number; // kaç kişi şans diledi
+  cheers: number; // kaç kişi tebrik etti
   views: number; // görüntülenme sayısı (şimdilik rastgele; ileride IP bazlı)
   code: string; // manifeste özel arama kodu (örn. MF-042)
   date: string; // zarfın eklendiği tarih
@@ -35,6 +36,9 @@ type Envelope = {
   month: number; // 1-12, filtreleme için
   bottled?: boolean; // 1000+ şans: manifest şişede sergileniyor
   sponsored?: boolean; // marka zarfı (native reklam)
+  realized?: boolean; // manifest gerçekleşti: şans dondurulur, rozet taşır
+  realizedDate?: string; // gerçekleşti olarak işaretlendiği tarih
+  ts: number; // eklenme zamanı (timestamp — türetilmiş alanlar için)
 };
 
 // Sponsor zarf teması — Petimemama marka renkleri (canlı, parlak)
@@ -205,22 +209,30 @@ function buildEnvelopes(): Envelope[] {
     for (let s = 0; s < sentenceCount; s++) {
       sentences.push(SENTENCES[Math.floor(rand() * SENTENCES.length)]);
     }
+    // Manifest metni en fazla 300 karakter (ürün kuralı)
+    let manifest = "";
+    for (const s of sentences) {
+      const next = manifest ? `${manifest} ${s}` : s;
+      if (next.length > 300) break;
+      manifest = next;
+    }
 
     // Seed dizilimi bozulmasın diye eski palet seçiminin rand() çağrısı korunuyor
     rand();
 
-    // Şans dağılımı — baraj bantlarına göre tasarlandı:
-    // %70 → 0-49 (sade) • %22 → 50-249 (sticker hakkı)
-    // %7 → 250-999 (parlak renk hakkı) • %1 → 1000+ (şişe hakkı)
+    // Şans dağılımı — baraj bantlarına göre tasarlandı (oylar e-posta
+    // onaylı üyelerden geldiği için barajlar düşük tutuldu):
+    // %68 → 0-24 (sade) • %22 → 25-99 (sticker hakkı)
+    // %9 → 100-249 (parlak renk hakkı) • %1 → 250+ (şişe hakkı)
     const lr = rand();
     const luck = Math.floor(
-      lr < 0.7
-        ? (lr / 0.7) * 49
-        : lr < 0.92
-          ? 50 + ((lr - 0.7) / 0.22) * 199
+      lr < 0.68
+        ? (lr / 0.68) * 24
+        : lr < 0.9
+          ? 25 + ((lr - 0.68) / 0.22) * 74
           : lr < 0.99
-            ? 250 + ((lr - 0.92) / 0.07) * 749
-            : 1000 + ((lr - 0.99) / 0.01) * 900,
+            ? 100 + ((lr - 0.9) / 0.09) * 149
+            : 250 + ((lr - 0.99) / 0.01) * 550,
     );
 
     // Tarih için "yaş" değeri (eski zarflar üst id'lerde)
@@ -242,14 +254,16 @@ function buildEnvelopes(): Envelope[] {
 
     list.push({
       luck,
+      cheers: 0, // gerçekleşme durumuna göre aşağıda doldurulur
       views,
+      ts: added.getTime(),
       date,
       year: added.getFullYear(),
       month: added.getMonth() + 1,
       code: `MF-${String(i + 1).padStart(3, "0")}`,
       id: i,
       name,
-      manifest: sentences.join(" "),
+      manifest,
       jx: rand(),
       jy: rand(),
       rotation: -28 + rand() * 56,
@@ -277,25 +291,25 @@ function buildEnvelopes(): Envelope[] {
     "🐞", // uğur, kısmet
   ];
   // Baraj kuralları — barajı geçen herkes hakkını kullanmış kabul edilir
-  // (e-posta bildirimi gider: "50/250/1000 barajını geçtin!")
+  // (e-posta bildirimi gider: "25/100/250 barajını geçtin!")
   const SLOTS = [24, 76];
   let sk = 0;
   for (const env of list) {
-    // 50+ şans → sticker
-    if (env.luck >= 50) {
+    // 25+ şans → sticker
+    if (env.luck >= 25) {
       env.sticker = {
         emoji: STICKER_EMOJIS[Math.floor(rand() * STICKER_EMOJIS.length)],
         left: SLOTS[Math.floor(rand() * SLOTS.length)],
         rotation: -25 + rand() * 50,
       };
     }
-    // 250+ şans → parlak renk (sırayla döner)
-    if (env.luck >= 250) {
+    // 100+ şans → parlak renk (sırayla döner)
+    if (env.luck >= 100) {
       env.color = SPECIALS[sk % SPECIALS.length];
       sk++;
     }
-    // 1000+ şans → manifest şişelenir
-    if (env.luck >= 1000) {
+    // 250+ şans → manifest şişelenir
+    if (env.luck >= 250) {
       env.bottled = true;
     }
   }
@@ -316,6 +330,44 @@ function buildEnvelopes(): Envelope[] {
     env.manifest = SPONSOR_TEXT;
   }
 
+  // Birkaç manifest gerçekleşmiş: yeşil rozet taşır, şans dilenemez
+  const realizedSet = new Set<number>();
+  while (realizedSet.size < 8) {
+    const idx = Math.floor(rand() * list.length);
+    if (list[idx].bottled || list[idx].sponsored) continue;
+    realizedSet.add(idx);
+  }
+  for (const idx of realizedSet) {
+    list[idx].realized = true;
+  }
+
+  // 2 şişelenmiş manifest de gerçekleşmiş olsun
+  let bottledRealized = 0;
+  for (const env of list) {
+    if (env.bottled && bottledRealized < 2) {
+      env.realized = true;
+      bottledRealized++;
+    }
+  }
+
+  // Tebrik sayısı yalnızca gerçekleşen manifestlerde olur; gerçekleşme
+  // tarihi de eklenme ile bugün arasında rastgele bir güne düşer
+  const REF_TS = new Date(2026, 6, 26).getTime();
+  for (const env of list) {
+    env.cheers = env.realized
+      ? Math.floor(env.luck * 0.6 + rand() * 60)
+      : 0;
+    if (env.realized) {
+      const span = Math.max(0, REF_TS - env.ts);
+      const at = new Date(env.ts + 5 * 86400000 + rand() * span * 0.9);
+      env.realizedDate = at.toLocaleDateString("tr-TR", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+    }
+  }
+
   return list;
 }
 
@@ -332,6 +384,8 @@ type BottleData = {
   rot: number; // deg
   sticker: string;
   ribbon: number; // RIBBON_GRADS indeksi
+  realized: boolean;
+  cheers: number;
 };
 
 function toBottleData(env: Envelope, rot: number): BottleData {
@@ -345,6 +399,8 @@ function toBottleData(env: Envelope, rot: number): BottleData {
     rot,
     sticker: env.sticker?.emoji ?? "🦋",
     ribbon: env.id % RIBBON_GRADS.length,
+    realized: !!env.realized,
+    cheers: env.cheers,
   };
 }
 // El yapımı cam şişe: mantar, ip, içinde rulo not, dipte kum, cam
@@ -355,12 +411,16 @@ function BottleVisual({
   sticker = "🦋",
   ribbon = 0,
   sheenDelay = 0,
+  realized = false,
+  bandFs = 10,
 }: {
   noteOut?: boolean;
   label?: React.ReactNode;
   sticker?: string;
   ribbon?: number;
   sheenDelay?: number;
+  realized?: boolean;
+  bandFs?: number;
 }) {
   const rg = RIBBON_GRADS[ribbon % RIBBON_GRADS.length];
   const ribbonFill = `url(#ribbonGrad${ribbon % RIBBON_GRADS.length})`;
@@ -556,6 +616,22 @@ function BottleVisual({
           {label}
         </div>
       )}
+
+      {/* Gerçekleşti bandı — şişeyi yatayda saran yeşil şerit, etiketin altında */}
+      {realized && (
+        <div
+          className="absolute left-[19.5%] top-[72%] w-[61%] rounded-[3px] border-y border-emerald-700/30 text-center font-bold uppercase text-white shadow-[0_2px_6px_rgba(0,0,0,0.2)]"
+          style={{
+            background:
+              "linear-gradient(90deg, rgba(0,0,0,0.3), rgba(0,0,0,0.06) 14%, rgba(0,0,0,0) 30%, rgba(0,0,0,0) 70%, rgba(0,0,0,0.08) 86%, rgba(0,0,0,0.32)), linear-gradient(165deg, #34d399, #059669)",
+            fontSize: bandFs,
+            letterSpacing: "0.1em",
+            padding: `${bandFs * 0.35}px 0`,
+          }}
+        >
+          Gerçekleşti
+        </div>
+      )}
     </div>
   );
 }
@@ -655,15 +731,31 @@ function BottlePopup({
               noteOut={notePhase !== "in"}
               sticker={bottle.sticker}
               ribbon={bottle.ribbon}
+              realized={bottle.realized}
+              bandFs={12}
               label={
                 stage === "open" ? undefined : (
                   <div className="flex flex-col items-center gap-[3px]">
-                    <p className="text-[11px] leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]">
-                      ⭐
-                    </p>
-                    <p className="text-[12px] leading-none font-semibold text-[#8a6d33]">
-                      {luck.toLocaleString("tr-TR")}
-                    </p>
+                    <div className="flex items-start justify-center gap-2">
+                      <div className="flex flex-col items-center gap-[2px]">
+                        <p className="text-[11px] leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]">
+                          ⭐
+                        </p>
+                        <p className="text-[12px] leading-none font-semibold text-[#8a6d33]">
+                          {luck.toLocaleString("tr-TR")}
+                        </p>
+                      </div>
+                      {bottle.realized && (
+                        <div className="flex flex-col items-center gap-[2px]">
+                          <p className="text-[11px] leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]">
+                            👏
+                          </p>
+                          <p className="text-[12px] leading-none font-semibold text-[#8a6d33]">
+                            {bottle.cheers.toLocaleString("tr-TR")}
+                          </p>
+                        </div>
+                      )}
+                    </div>
                     <p className="truncate font-hand text-[17px] leading-none font-semibold text-[#6b5426]">
                       {bottle.name}
                     </p>
@@ -834,10 +926,25 @@ function EnvelopeCard({
         {/* Rumuz */}
         <span
           className="absolute inset-x-0 bottom-[4%] truncate px-1 text-center font-hand leading-none font-semibold"
-          style={{ color: envelope.color.ink, fontSize: 18 * fs }}
+          style={{ color: envelope.color.ink, fontSize: Math.max(14.5, 18 * fs) }}
         >
           {envelope.name}
         </span>
+        {/* Gerçekleşti etiketi — SPONSORLU gibi kapak ucunda ortalı yeşil pill */}
+        {envelope.realized && (
+          <span
+            className="absolute left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-emerald-500 font-bold uppercase text-white shadow-md"
+            style={{
+              top: "30%",
+              rotate: "-4deg",
+              fontSize: Math.max(7.5, 8.5 * fs),
+              letterSpacing: "0.1em",
+              padding: `${2.5 * fs}px ${8 * fs}px`,
+            }}
+          >
+            Gerçekleşti
+          </span>
+        )}
         {/* Sponsor zarfı: logo + SPONSORLU etiketi */}
         {envelope.sponsored && (
           <>
@@ -866,19 +973,46 @@ function EnvelopeCard({
             Kasıtlı olarak silik: duvarın yıldız tarlasına dönmemesi için.
             Sponsor zarfında gösterilmez */}
         {!envelope.sponsored && (
-          <span className="pointer-events-none absolute inset-x-0 bottom-[23%] flex flex-col items-center gap-[1px] leading-none">
-            <span
-              className="opacity-70 drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]"
-              style={{ fontSize: 9 * fs }}
-            >
-              ⭐
+          <span
+            className="pointer-events-none absolute inset-x-0 bottom-[23%] flex items-start justify-center leading-none"
+            style={{ gap: 10 * fs }}
+          >
+            <span className="flex flex-col items-center gap-[1px]">
+              <span
+                className="opacity-70 drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]"
+                style={{ fontSize: Math.max(10, 9 * fs) }}
+              >
+                ⭐
+              </span>
+              <span
+                className="font-medium opacity-80"
+                style={{
+                  color: envelope.color.ink,
+                  fontSize: Math.max(11.5, 10 * fs),
+                }}
+              >
+                {envelope.luck}
+              </span>
             </span>
-            <span
-              className="font-medium opacity-75"
-              style={{ color: envelope.color.ink, fontSize: 10 * fs }}
-            >
-              {envelope.luck}
-            </span>
+            {envelope.realized && (
+              <span className="flex flex-col items-center gap-[1px]">
+                <span
+                  className="opacity-70 drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]"
+                  style={{ fontSize: Math.max(10, 9 * fs) }}
+                >
+                  👏
+                </span>
+                <span
+                  className="font-medium opacity-80"
+                  style={{
+                    color: envelope.color.ink,
+                    fontSize: Math.max(11.5, 10 * fs),
+                  }}
+                >
+                  {envelope.cheers}
+                </span>
+              </span>
+            )}
           </span>
         )}
         {/* Süs — kapak ucu hizasında sol/orta/sağ slotlardan birinde */}
@@ -912,9 +1046,11 @@ function ManifestPopup({
 }) {
   // origin: zarf duvardaki yerinde • center: ekran ortasında • open: kapak açık
   const [stage, setStage] = useState<"origin" | "center" | "open">("origin");
-  // Şans dileme (demo: yerel state, backend gelince gerçek sayaca bağlanır)
+  // Şans dileme / tebrik (demo: yerel state, backend'de gerçek sayaca bağlanır)
   const [luck, setLuck] = useState(envelope.luck ?? 0);
   const [wished, setWished] = useState(false);
+  const [cheers, setCheers] = useState(envelope.cheers ?? 0);
+  const [cheered, setCheered] = useState(false);
   // Kapak, mektup dışarıdayken arkada (1), mektup içerideyken önde (30) durur
   const [flapZ, setFlapZ] = useState(30);
   const closingRef = useRef(false);
@@ -926,17 +1062,25 @@ function ManifestPopup({
     const vw = document.documentElement.clientWidth;
     const vh = document.documentElement.clientHeight;
     const popW = Math.min(window.innerWidth * 0.92, 540);
+    // k: popup geometrisi genişlikle orantılı küçülür — mobilde de zarf
+    // masaüstündeki gibi yatay dikdörtgen kalır
+    const k = popW / 540;
     const sx = origin.w / popW;
-    const sy = origin.h / 340;
+    const sy = origin.h / (395 * k);
+    const off = (origin.h / 395) * 82.5; // gövde merkez ofseti (ekran px)
+    // Mobilde zarf orta-altta açılır; mektup orta-üste doğru çıkar
+    const dropY = window.innerWidth <= 520 ? Math.round(vh * 0.1) : 0;
     const rad = (envelope.rotation * Math.PI) / 180;
     // Duvardaki süs, zarf genişliğinin ~%16'sı. Popup süsü bunun 1/sx katı
     // olur ki zarf küçülünce süs duvardakiyle aynı boyuta insin.
     return {
+      k,
+      dropY,
       sx,
       sy,
       stickerPx: (origin.w * (28 / 172)) / sx,
-      dx: origin.cx - vw / 2 + 110 * sy * Math.sin(rad),
-      dy: origin.cy - vh / 2 - 110 * sy * Math.cos(rad),
+      dx: origin.cx - vw / 2 + off * Math.sin(rad),
+      dy: origin.cy - vh / 2 - off * Math.cos(rad),
     };
   }, [origin, envelope.rotation]);
 
@@ -985,32 +1129,37 @@ function ManifestPopup({
         className="fixed left-1/2 top-1/2 w-[min(92vw,540px)]"
         style={{
           transform: atCenter
-            ? "translate(-50%, -50%)"
+            ? `translate(-50%, -50%) translate(0px, ${geo.dropY}px)`
             : `translate(-50%, -50%) translate(${geo.dx}px, ${geo.dy}px) rotate(${envelope.rotation}deg) scale(${geo.sx}, ${geo.sy})`,
           transition: "transform 380ms cubic-bezier(0.3, 0.85, 0.3, 1)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="relative h-[560px]" style={{ perspective: "1100px" }}>
+        <div
+          className="relative"
+          style={{ height: 560 * geo.k, perspective: "1100px" }}
+        >
           {/* Zarf arka yüzeyi */}
           <div
-            className="absolute inset-x-0 bottom-0 h-[340px] rounded-[6px]"
-            style={
-              envelope.color.flapBg
+            className="absolute inset-x-0 bottom-0 rounded-[6px]"
+            style={{
+              height: 395 * geo.k,
+              ...(envelope.color.flapBg
                 ? { background: envelope.color.flapBg }
-                : { backgroundColor: envelope.color.dark }
-            }
+                : { backgroundColor: envelope.color.dark }),
+            }}
           />
 
           {/* Katlanma izi — kapağın menteşe çizgisi. Kapak kapalıyken (z:30)
               kapağın altında kalır, açılınca ortaya çıkar */}
           <div
-            className="absolute inset-x-0 top-[220px] z-[5] h-px"
-            style={{ backgroundColor: "rgba(0,0,0,0.09)" }}
+            className="absolute inset-x-0 z-[5] h-px"
+            style={{ top: 165 * geo.k, backgroundColor: "rgba(0,0,0,0.09)" }}
           />
           <div
-            className="absolute inset-x-0 top-[214px] z-[5] h-[6px]"
+            className="absolute inset-x-0 z-[5] h-[6px]"
             style={{
+              top: 159 * geo.k,
               background:
                 "linear-gradient(to top, rgba(0,0,0,0.05), transparent)",
             }}
@@ -1018,19 +1167,22 @@ function ManifestPopup({
 
           {/* Mektup — kapalıyken zarfın içine sığar, kapak açılınca büyüyerek çıkar */}
           <div
-            className="absolute bottom-[36px] left-1/2 z-10 w-[86%]"
+            className="absolute left-1/2 z-10 w-[86%]"
             style={{
+              bottom: 36 * geo.k,
               transformOrigin: "bottom center",
+              // Açıkken sabit piksel kadar yükselir: kağıdın ALT kenarı hep
+              // aynı hizada durur, kağıt metin kadar uzar (boş alan kalmaz)
               transform:
                 stage === "open"
-                  ? "translateX(-50%) translateY(-58%) scale(1)"
+                  ? `translateX(-50%) translateY(${-319 * geo.k}px) scale(1)`
                   : "translateX(-50%) translateY(3%) scale(0.5)",
               transition: `transform 400ms cubic-bezier(0.25, 0.9, 0.3, 1) ${
                 stage === "open" ? "200ms" : "0ms"
               }`,
             }}
           >
-            <div className="h-[420px] max-h-[62vh] overflow-y-auto rounded-[4px] bg-[#fffdf5] px-8 py-7 shadow-[0_16px_44px_rgba(0,0,0,0.35)]">
+            <div className="max-h-[62vh] overflow-y-auto rounded-[4px] bg-[#fffdf5] px-8 py-7 shadow-[0_16px_44px_rgba(0,0,0,0.35)] max-[520px]:px-5 max-[520px]:py-5">
               {envelope.sponsored ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -1039,29 +1191,33 @@ function ManifestPopup({
                   className="h-9 object-contain"
                 />
               ) : (
-                <p className="font-hand text-3xl text-neutral-800">
+                <p className="font-hand text-3xl text-neutral-800 max-[520px]:text-[22px]">
                   {envelope.name}
                 </p>
               )}
               <div className="mt-1 flex items-center justify-between">
-                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-neutral-400">
+                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-neutral-400 max-[520px]:text-[9.5px]">
                   {envelope.sponsored ? "Sponsorlu • Sürpriz" : "Manifest"}
                 </p>
-                <p className="font-mono text-[11px] tracking-wider text-neutral-400">
+                <p className="font-mono text-[11px] tracking-wider text-neutral-400 max-[520px]:text-[9.5px]">
                   {envelope.code}
                 </p>
               </div>
-              <p className="mt-4 text-[15px] leading-relaxed text-neutral-700">
+              <p className="mt-4 text-[15px] leading-relaxed text-neutral-700 max-[520px]:text-[13px]">
                 {envelope.manifest}
               </p>
             </div>
           </div>
 
-          {/* Zarf ön cebi (mektubun alt kısmını içine alır) */}
+          {/* Zarf ön cebi (mektubun alt kısmını içine alır).
+              translateZ(0): mobil tarayıcıda clip-path'in animasyon sırasında
+              düşmemesi için kendi GPU katmanına zorlanır */}
           <div
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-[340px] rounded-[6px] shadow-[0_18px_50px_rgba(0,0,0,0.35)]"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-20 rounded-[6px] shadow-[0_18px_50px_rgba(0,0,0,0.35)]"
             style={{
+              height: 395 * geo.k,
               clipPath: "polygon(0 0, 50% 52%, 100% 0, 100% 100%, 0 100%)",
+              transform: "translateZ(0)",
               ...(envelope.color.bodyBg
                 ? { background: envelope.color.bodyBg }
                 : { backgroundColor: envelope.color.base }),
@@ -1070,9 +1226,11 @@ function ManifestPopup({
           {/* Parlak yüzey — özel seri, ön cep üzerinde */}
           {envelope.color.gloss && (
             <div
-              className="pointer-events-none absolute inset-x-0 bottom-0 z-[21] h-[340px] rounded-[6px]"
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-[21] rounded-[6px]"
               style={{
+                height: 395 * geo.k,
                 clipPath: "polygon(0 0, 50% 52%, 100% 0, 100% 100%, 0 100%)",
+                transform: "translateZ(0)",
                 background:
                   "linear-gradient(115deg, rgba(255,255,255,0.22) 8%, rgba(255,255,255,0.06) 30%, transparent 46%)",
               }}
@@ -1081,14 +1239,38 @@ function ManifestPopup({
 
           {/* Eklenme tarihi + görüntülenme — zarf ön yüzü, sol alt */}
           <div
-            className="absolute bottom-[16px] left-[22px] z-30 flex flex-col items-start gap-1 text-xs font-medium transition-opacity duration-200"
+            className="absolute bottom-[16px] left-[22px] z-30 flex flex-col items-start gap-1 text-xs font-medium transition-opacity duration-200 max-[520px]:bottom-[12px] max-[520px]:left-[14px] max-[520px]:gap-0.5"
             style={{
               color: envelope.color.ink,
               opacity: stage === "open" ? 0.85 : 0,
               pointerEvents: "none",
             }}
           >
-            <span className="flex items-center gap-1.5 text-[11px] opacity-90">
+            {envelope.realized && (
+              <>
+                <span className="rounded-full bg-emerald-500 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-white shadow-sm max-[520px]:px-2.5 max-[520px]:py-0.5 max-[520px]:text-[8.5px]">
+                  Gerçekleşti
+                </span>
+                <span className="flex items-center gap-1.5 text-[11px] opacity-90 max-[520px]:text-[9.5px] max-[520px]:gap-1">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-4 w-4 max-[520px]:h-3.5 max-[520px]:w-3.5"
+                  >
+                    <path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8" />
+                    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                    <path d="m16 19 2 2 4-4" />
+                  </svg>
+                  {envelope.realizedDate}&apos;da &quot;gerçekleşti&quot;
+                  işaretlendi
+                </span>
+              </>
+            )}
+            <span className="flex items-center gap-1.5 text-[11px] opacity-90 max-[520px]:text-[9.5px] max-[520px]:gap-1">
               <svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -1096,7 +1278,7 @@ function ManifestPopup({
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="h-4 w-4"
+                className="h-4 w-4 max-[520px]:h-3.5 max-[520px]:w-3.5"
               >
                 <path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8" />
                 <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
@@ -1105,7 +1287,9 @@ function ManifestPopup({
               </svg>
               {envelope.date} tarihinde eklendi
             </span>
-            <span className="h-px w-full bg-current opacity-25" />
+            {!envelope.realized && (
+              <span className="h-px w-full bg-current opacity-25" />
+            )}
             <span className="flex items-center gap-1.5">
             <svg
               viewBox="0 0 24 24"
@@ -1123,7 +1307,7 @@ function ManifestPopup({
             </span>
           </div>
 
-          {/* Şans dile — zarf ön yüzü, sağ alt (sponsor zarfında yok) */}
+          {/* Sağ alt — normal zarfta şans dile; gerçekleşende tebrik akışı */}
           <div
             className="absolute bottom-[14px] right-[20px] z-30 flex flex-col items-end gap-1.5 transition-opacity duration-200"
             style={{
@@ -1133,7 +1317,7 @@ function ManifestPopup({
             }}
           >
             <span
-              className="flex items-center gap-1 rounded-full bg-white/60 px-2.5 py-0.5 text-xs font-medium shadow-sm backdrop-blur-[1px]"
+              className="flex items-center gap-1 rounded-full bg-white/60 px-2.5 py-0.5 text-xs font-medium shadow-sm backdrop-blur-[1px] max-[520px]:px-2 max-[520px]:text-[10px]"
               style={{
                 // Beyaz pill üstünde açık mürekkepler okunmaz (özel seri)
                 color: envelope.color.gloss ? "#525252" : envelope.color.ink,
@@ -1142,41 +1326,82 @@ function ManifestPopup({
               <span className="text-[11px] drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]">
                 ⭐
               </span>
-              <b className="font-semibold">{luck}</b> kişi şans diledi
+              <b className="font-semibold">{luck}</b> kişi şans{" "}
+              {envelope.realized ? "dilemişti" : "diledi"}
             </span>
-            <button
-              type="button"
-              onClick={() => {
-                if (wished) return;
-                setWished(true);
-                setLuck((n) => n + 1);
-              }}
-              className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium shadow-sm transition-all ${
-                wished
-                  ? "border-amber-300 bg-amber-50 text-amber-600"
-                  : "border-neutral-200 bg-white/90 text-neutral-600 hover:border-amber-300 hover:text-amber-600"
-              }`}
-            >
-              <span
-                className={`text-base transition-transform duration-300 ${
-                  wished ? "scale-125" : ""
+            {envelope.realized ? (
+              <>
+                <span
+                  className="flex items-center gap-1 rounded-full bg-white/60 px-2.5 py-0.5 text-xs font-medium shadow-sm backdrop-blur-[1px] max-[520px]:px-2 max-[520px]:text-[10px]"
+                  style={{
+                    color: envelope.color.gloss
+                      ? "#525252"
+                      : envelope.color.ink,
+                  }}
+                >
+                  <span className="text-[11px] drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]">
+                    👏
+                  </span>
+                  <b className="font-semibold">{cheers}</b> kişi tebrik etti
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (cheered) return;
+                    setCheered(true);
+                    setCheers((n) => n + 1);
+                  }}
+                  className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium shadow-sm transition-all max-[520px]:px-3 max-[520px]:py-1 max-[520px]:text-xs ${
+                    cheered
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-600"
+                      : "border-neutral-200 bg-white/90 text-neutral-600 hover:border-emerald-300 hover:text-emerald-600"
+                  }`}
+                >
+                  <span
+                    className={`text-base transition-transform duration-300 ${
+                      cheered ? "scale-125" : ""
+                    }`}
+                  >
+                    👏
+                  </span>
+                  Tebrik et
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  if (wished) return;
+                  setWished(true);
+                  setLuck((n) => n + 1);
+                }}
+                className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium shadow-sm transition-all max-[520px]:px-3 max-[520px]:py-1 max-[520px]:text-xs ${
+                  wished
+                    ? "border-amber-300 bg-amber-50 text-amber-600"
+                    : "border-neutral-200 bg-white/90 text-neutral-600 hover:border-amber-300 hover:text-amber-600"
                 }`}
               >
-                {wished ? "⭐" : "☆"}
-              </span>
-              Şans dile
-            </button>
+                <span
+                  className={`text-base transition-transform duration-300 ${
+                    wished ? "scale-125" : ""
+                  }`}
+                >
+                  {wished ? "⭐" : "☆"}
+                </span>
+                Şans dile
+              </button>
+            )}
           </div>
 
           {/* Kapak — ortaya gelince yukarı açılır, kapanınca geri iner.
               Ucu, ön cebin V çizgisinin altına iner: kapalıyken aralık kalmaz */}
+          {/* Dönüş dış katmanda, üçgen kesim iç katmanda: mobil tarayıcılarda
+              clip-path + 3D animasyon aynı elemanda takılıyor */}
           <div
-            className="absolute inset-x-0 top-[220px] h-[185px] rounded-t-[6px]"
+            className="absolute inset-x-0"
             style={{
-              ...(envelope.color.flapBg
-                ? { background: envelope.color.flapBg }
-                : { backgroundColor: envelope.color.dark }),
-              clipPath: "polygon(0 0, 100% 0, 50% 100%)",
+              top: 165 * geo.k,
+              height: 215 * geo.k,
               transformOrigin: "top center",
               transform: stage === "open" ? "rotateX(180deg)" : "rotateX(0deg)",
               // Açılırken hemen, kapanırken mektup içeri girdikten sonra
@@ -1184,8 +1409,20 @@ function ManifestPopup({
                 stage === "open" ? "0ms" : "200ms"
               }`,
               zIndex: flapZ,
+              willChange: "transform",
             }}
-          />
+          >
+            <div
+              className="h-full w-full rounded-t-[6px]"
+              style={{
+                ...(envelope.color.flapBg
+                  ? { background: envelope.color.flapBg }
+                  : { backgroundColor: envelope.color.dark }),
+                clipPath: "polygon(0 0, 100% 0, 50% 100%)",
+                transform: "translateZ(0)",
+              }}
+            />
+          </div>
 
           {/* Süs — duvardaki zarfla aynı yerde, aynı açıyla */}
           {envelope.sticker && (
@@ -1193,7 +1430,7 @@ function ManifestPopup({
               className="pointer-events-none absolute z-[35] leading-none drop-shadow-[0_2px_2px_rgba(0,0,0,0.25)]"
               style={{
                 left: `${envelope.sticker.left}%`,
-                top: "405px",
+                top: 380 * geo.k,
                 fontSize: `${geo.stickerPx}px`,
                 transform: `translate(-50%, -100%) rotate(${envelope.sticker.rotation}deg)`,
               }}
@@ -1205,8 +1442,8 @@ function ManifestPopup({
           <button
             type="button"
             onClick={close}
-            className="absolute -right-2 top-[150px] z-40 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white text-xl text-neutral-600 shadow-lg transition-all hover:scale-110"
-            style={{ opacity: stage === "open" ? 1 : 0 }}
+            className="absolute -right-2 z-40 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white text-xl text-neutral-600 shadow-lg transition-all hover:scale-110 max-[520px]:h-8 max-[520px]:w-8 max-[520px]:text-base"
+            style={{ top: 95 * geo.k, opacity: stage === "open" ? 1 : 0 }}
             aria-label="Kapat"
           >
             ×
@@ -1290,6 +1527,16 @@ export default function Home() {
     [envelopes],
   );
 
+  // Aktif filtreye uyan manifest sayısı (şişeler dahil)
+  const filteredCount = useMemo(
+    () =>
+      envelopes.filter(
+        (e) =>
+          (!fYear || e.year === fYear) && (!fMonth || e.month === fMonth),
+      ).length,
+    [envelopes, fYear, fMonth],
+  );
+
   // Yerleşim: tamamen orantılı piksel konumları (zoom yok, ölçek yok).
   // Konum sırası her gün 02:00'da daySeed ile rastgele karılır;
   // filtre aktifken görünür zarflar baştan itibaren yeniden dizilir
@@ -1353,7 +1600,8 @@ export default function Home() {
       const col = i % cols;
       const row = Math.floor(i / cols);
       pos.set(env.id, {
-        x: 2 + col * m.colStep + env.jx * m.jx,
+        // Serpme payı iki yöne dağılır ki sol kenar da sağ gibi dolu görünsün
+        x: 2 + col * m.colStep + (env.jx - 0.5) * m.jx,
         y: topOffset + row * m.rowStep + env.jy * m.jy,
         // Sponsor zarfı komşularının önünde durur (etiketi kapanmasın)
         z: (rows - row) * 4 + env.zr + (env.sponsored ? 6 : 0),
@@ -1391,7 +1639,8 @@ export default function Home() {
         p.x += dx * push;
         p.y += dy * push;
       }
-      p.x = Math.min(wrapperW - m.envW - 2, Math.max(2, p.x));
+      // Kenarlarda simetrik hafif taşmaya izin ver (iki taraf da dolu dursun)
+      p.x = Math.min(wrapperW - m.envW + 8, Math.max(-8, p.x));
       p.y = Math.max(2, p.y);
     }
 
@@ -1592,7 +1841,7 @@ export default function Home() {
               <circle cx="11" cy="11" r="8" />
               <path d="m21 21-4.3-4.3" />
             </svg>
-            Ara
+            <span className="max-[520px]:hidden">Ara</span>
           </button>
           <span className="mx-2 h-5 w-px shrink-0 bg-neutral-200" />
           <select
@@ -1601,7 +1850,7 @@ export default function Home() {
             className="cursor-pointer bg-transparent py-1 text-sm text-neutral-600 outline-none"
             aria-label="Yıl filtresi"
           >
-            <option value={0}>Yıl</option>
+            <option value={0}>Tüm yıllar</option>
             {years.map((y) => (
               <option key={y} value={y}>
                 {y}
@@ -1622,6 +1871,10 @@ export default function Home() {
               </option>
             ))}
           </select>
+          {/* Seçime uyan manifest sayısı — filtrelerin hemen altında */}
+          <span className="absolute right-2 top-[calc(100%+6px)] whitespace-nowrap rounded-full bg-white/90 px-3 py-1 text-[11px] font-medium text-neutral-500 shadow-sm backdrop-blur">
+            {filteredCount.toLocaleString("tr-TR")} manifest
+          </span>
         </form>
       </header>
 
@@ -1687,20 +1940,45 @@ export default function Home() {
                 sticker={b.env.sticker?.emoji ?? "🦋"}
                 ribbon={b.env.id % RIBBON_GRADS.length}
                 sheenDelay={i * 0.9}
+                realized={b.env.realized}
+                bandFs={Math.max(8, 10 * (layout.bottleW / 160))}
                 label={
                   <div className="flex flex-col items-center gap-[3px]">
-                    <p
-                      className="leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]"
-                      style={{ fontSize: 11 * (layout.bottleW / 160) }}
+                    <div
+                      className="flex items-start justify-center"
+                      style={{ gap: 8 * (layout.bottleW / 160) }}
                     >
-                      ⭐
-                    </p>
-                    <p
-                      className="leading-none font-semibold text-[#8a6d33]"
-                      style={{ fontSize: 12 * (layout.bottleW / 160) }}
-                    >
-                      {b.env.luck.toLocaleString("tr-TR")}
-                    </p>
+                      <div className="flex flex-col items-center gap-[2px]">
+                        <p
+                          className="leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]"
+                          style={{ fontSize: 11 * (layout.bottleW / 160) }}
+                        >
+                          ⭐
+                        </p>
+                        <p
+                          className="leading-none font-semibold text-[#8a6d33]"
+                          style={{ fontSize: 12 * (layout.bottleW / 160) }}
+                        >
+                          {b.env.luck.toLocaleString("tr-TR")}
+                        </p>
+                      </div>
+                      {b.env.realized && (
+                        <div className="flex flex-col items-center gap-[2px]">
+                          <p
+                            className="leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]"
+                            style={{ fontSize: 11 * (layout.bottleW / 160) }}
+                          >
+                            👏
+                          </p>
+                          <p
+                            className="leading-none font-semibold text-[#8a6d33]"
+                            style={{ fontSize: 12 * (layout.bottleW / 160) }}
+                          >
+                            {b.env.cheers.toLocaleString("tr-TR")}
+                          </p>
+                        </div>
+                      )}
+                    </div>
                     <p
                       className="truncate font-hand leading-none font-semibold text-[#6b5426]"
                       style={{ fontSize: 17 * (layout.bottleW / 160) }}
