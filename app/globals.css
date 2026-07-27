@@ -35,6 +35,118 @@ body {
   animation: env-glow 0.9s ease-in-out 4;
 }
 
+/* Şans dile — hover'da yerinde zıplama */
+@keyframes wish-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-6px);
+  }
+  65% {
+    transform: translateY(-2px);
+  }
+}
+
+.wish-btn:hover {
+  animation: wish-bounce 0.55s ease-in-out infinite;
+}
+
+/* Şans dile — basınca "yaşasın!" sevinç sallanması */
+@keyframes wish-yay {
+  0% {
+    transform: scale(1) rotate(0deg);
+  }
+  25% {
+    transform: scale(1.2) rotate(-7deg);
+  }
+  50% {
+    transform: scale(1.25) rotate(7deg);
+  }
+  72% {
+    transform: scale(1.08) rotate(-3deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+.wish-yay {
+  animation: wish-yay 0.65s cubic-bezier(0.3, 1.4, 0.4, 1);
+}
+
+/* Basınca buton etrafına saçılan yıldızlar */
+@keyframes wish-star {
+  0% {
+    transform: translate(-50%, -50%) translate(0, 0) scale(0.3) rotate(0deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) translate(var(--dx), var(--dy))
+      scale(1) rotate(var(--rot));
+    opacity: 0;
+  }
+}
+
+.wish-star {
+  animation: wish-star 0.85s cubic-bezier(0.15, 0.85, 0.35, 1) forwards;
+}
+
+/* Kutudan fışkıran ışın demeti — yavaşça döner */
+@keyframes gift-rays {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.gift-rays {
+  animation: gift-rays 16s linear infinite;
+}
+
+/* Kapak arasından sızan ışık — belirgin nabız gibi atar */
+@keyframes gift-leak {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.gift-leak {
+  animation: gift-leak 2s ease-in-out infinite;
+}
+
+/* Hediye kutusundan yükselip sönen ışıltılar */
+@keyframes gift-spark {
+  0% {
+    transform: translateY(6px) scale(0.5);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-32px) scale(1.1);
+    opacity: 0;
+  }
+}
+
+.gift-spark {
+  animation: gift-spark 2.6s ease-out infinite;
+}
+
 /* Şişe camında arada bir geçen ışık süpürmesi */
 @keyframes bottle-sheen {
   0% {
