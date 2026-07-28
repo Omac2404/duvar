@@ -9,6 +9,17 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import SiteHeader from "./components/SiteHeader";
+import CopyBtn from "./components/CopyBtn";
+import { getUsers, PANEL_COLORS } from "./lib/auth";
+import {
+  BottleVisual,
+  GiftBoxVisual,
+  giftDepthClip,
+  RIBBON_GRADS,
+  SPECIAL_COLORS,
+  STICKER_EMOJIS,
+} from "./components/RewardVisuals";
 
 type EnvelopeColor = {
   base: string;
@@ -38,16 +49,30 @@ type Envelope = {
   luck: number; // kaç kişi şans diledi
   cheers: number; // kaç kişi tebrik etti
   views: number; // görüntülenme sayısı (şimdilik rastgele; ileride IP bazlı)
-  code: string; // manifeste özel arama kodu (örn. MF-042)
+  code: string; // manifeste özel arama kodu — 5 rakam + 2 harf (örn. 48213KT)
   date: string; // zarfın eklendiği tarih
   year: number; // filtreleme için
   month: number; // 1-12, filtreleme için
   bottled?: boolean; // 150+ şans: manifest şişede sergileniyor
+  ribbon?: number; // şişe kurdele rengi (üye zarfında seçilen özel renk)
   sponsored?: boolean; // marka zarfı (native reklam)
   realized?: boolean; // manifest gerçekleşti: şans dondurulur, rozet taşır
   realizedDate?: string; // gerçekleşti olarak işaretlendiği tarih
   ts: number; // eklenme zamanı (timestamp — türetilmiş alanlar için)
 };
+
+// 7 haneli manifest kodu: 5 rakam + 2 harf, ayraçsız (örn. 48213KT).
+// Rakam kısmı i'den deterministik türetilir — her zarfta benzersizdir
+const CODE_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+function makeCode(i: number, rand: () => number): string {
+  const digits = String(10000 + ((i * 48611) % 90000));
+  const l1 = CODE_LETTERS[Math.floor(rand() * 26)];
+  const l2 = CODE_LETTERS[Math.floor(rand() * 26)];
+  return `${digits}${l1}${l2}`;
+}
+
+// Üye zarflarının id aralığı — duvarın kendi zarflarından ayrışması için
+const MEMBER_ID_BASE = 900000;
 
 // Sponsor zarf teması — Petimemama marka renkleri (canlı, parlak)
 const SPONSOR_COLOR: EnvelopeColor = {
@@ -82,50 +107,12 @@ const PALETTE: EnvelopeColor[] = [
   { base: "#D6DBF0", dark: "#BEC5E4", ink: "#47517E" }, // pastel lavanta mavisi
 ];
 
-// Özel seri — parlak, gradientli, duvarda kendini belli eden 4 renk
-const SPECIALS: EnvelopeColor[] = [
-  {
-    base: "#1c1c1c",
-    dark: "#000000",
-    ink: "#E5C15C", // siyah üstüne altın yazı
-    bodyBg: "linear-gradient(135deg, #3d3d3d, #101010 55%, #2c2c2c)",
-    flapBg: "linear-gradient(180deg, #262626, #000000)",
-    gloss: true,
-  },
-  {
-    base: "#7b1526",
-    dark: "#4a0d16",
-    ink: "#E5C15C", // bordo, altın yazı
-    bodyBg: "linear-gradient(135deg, #9e2439, #5c0f1d 55%, #7b1526)",
-    flapBg: "linear-gradient(180deg, #6f1322, #3f0a12)",
-    gloss: true,
-  },
-  {
-    base: "#1c3260",
-    dark: "#0b1733",
-    ink: "#E5C15C", // lacivert, altın yazı
-    bodyBg: "linear-gradient(135deg, #2a4a8b, #101f45 55%, #1d3567)",
-    flapBg: "linear-gradient(180deg, #1c3260, #0b1733)",
-    gloss: true,
-  },
-  {
-    base: "#552881",
-    dark: "#2a0f47",
-    ink: "#E5C15C", // koyu mor, altın yazı
-    bodyBg: "linear-gradient(135deg, #6d3aa0, #3a1560 55%, #552881)",
-    flapBg: "linear-gradient(180deg, #4d2178, #2a0f47)",
-    gloss: true,
-  },
-];
+// Özel seri — parlak, gradientli, duvarda kendini belli eden 4 renk.
+// Tanımlar (anlam etiketleriyle) RewardVisuals'ta; duvar renk sırası
+// dönüşümlü atanırken üye zarfları panelden seçilen rengi kullanır
+const SPECIALS: EnvelopeColor[] = SPECIAL_COLORS.map((s) => s.color);
 
 // Şişe kurdele gradyanları — özel seri renklerinin keskin geçişli halleri
-const RIBBON_GRADS = [
-  ["#3d3d3d", "#101010", "#2c2c2c"], // siyah
-  ["#9e2439", "#5c0f1d", "#7b1526"], // bordo
-  ["#2a4a8b", "#101f45", "#1d3567"], // lacivert
-  ["#6d3aa0", "#3a1560", "#552881"], // koyu mor
-];
-
 const WORDS = [
   "Lorem", "Ipsum", "Dolor", "Amet", "Consec", "Elit", "Tempor",
   "Magna", "Aliqua", "Veniam", "Nostrud", "Ullamco", "Nisi", "Aliquip",
@@ -271,7 +258,7 @@ function buildEnvelopes(): Envelope[] {
       date,
       year: added.getFullYear(),
       month: added.getMonth() + 1,
-      code: `MF-${String(i + 1).padStart(3, "0")}`,
+      code: makeCode(i, rand),
       id: i,
       name,
       manifest,
@@ -283,24 +270,6 @@ function buildEnvelopes(): Envelope[] {
     });
   }
 
-  // ~90 zarfa sticker paletinden süs kondur (manifest türlerinin karşılığı).
-  // Süs, kapak ucu hizasında sol/sağ slotlardan birine oturur.
-  const STICKER_EMOJIS = [
-    "🏡", // ev sahibi olmak
-    "🚗", // araba almak
-    "✈️", // seyahat, yurt dışı
-    "💎", // para, zenginlik
-    "💼", // kariyer, iş
-    "🎓", // sınav, mezuniyet
-    "❤️", // aşk, ilişki
-    "👶", // çocuk sahibi olmak
-    "💍", // evlilik, nişan
-    "🌿", // sağlık, yeni başlangıç
-    "⭐", // başarı, şöhret
-    "🦋", // dönüşüm, özgürlük
-    "🍀", // şans
-    "🐞", // uğur, kısmet
-  ];
   // Baraj kuralları — barajı geçen herkes hakkını kullanmış kabul edilir
   // (e-posta bildirimi gider: "20/50/150 barajını geçtin!")
   const SLOTS = [24, 76];
@@ -409,242 +378,10 @@ function toBottleData(env: Envelope, rot: number): BottleData {
     luck: env.luck,
     rot,
     sticker: env.sticker?.emoji ?? "🦋",
-    ribbon: env.id % RIBBON_GRADS.length,
+    ribbon: env.ribbon ?? env.id % RIBBON_GRADS.length,
     realized: !!env.realized,
     cheers: env.cheers,
   };
-}
-// El yapımı cam şişe: mantar, ip, içinde rulo not, dipte kum, cam
-// parlamaları ve gövdesinde kağıt etiket (içeriği dışarıdan gelir)
-function BottleVisual({
-  noteOut = false,
-  label,
-  sticker = "🦋",
-  ribbon = 0,
-  sheenDelay = 0,
-  realized = false,
-  bandFs = 10,
-}: {
-  noteOut?: boolean;
-  label?: React.ReactNode;
-  sticker?: string;
-  ribbon?: number;
-  sheenDelay?: number;
-  realized?: boolean;
-  bandFs?: number;
-}) {
-  const rg = RIBBON_GRADS[ribbon % RIBBON_GRADS.length];
-  const ribbonFill = `url(#ribbonGrad${ribbon % RIBBON_GRADS.length})`;
-  return (
-    <div className="relative h-full w-full">
-      <svg viewBox="0 0 200 520" className="h-full w-full overflow-visible">
-        <defs>
-          <linearGradient id="glass" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="#bfe4ee" />
-            <stop offset="0.45" stopColor="#8ec7d8" />
-            <stop offset="0.7" stopColor="#a9d8e5" />
-            <stop offset="1" stopColor="#7db8cb" />
-          </linearGradient>
-          <linearGradient id="cork" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#c99a66" />
-            <stop offset="1" stopColor="#8a5a2f" />
-          </linearGradient>
-          <linearGradient id="sheenGrad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="#ffffff" stopOpacity="0" />
-            <stop offset="0.5" stopColor="#ffffff" stopOpacity="0.55" />
-            <stop offset="1" stopColor="#ffffff" stopOpacity="0" />
-          </linearGradient>
-          <clipPath id="bottleClip">
-            <path d="M82 60 L82 140 C82 162 58 172 50 192 C42 210 40 222 40 242 L40 458 C40 492 62 502 100 502 C138 502 160 492 160 458 L160 242 C160 222 158 210 150 192 C142 172 118 162 118 140 L118 60 Z" />
-          </clipPath>
-          <linearGradient
-            id={`ribbonGrad${ribbon % RIBBON_GRADS.length}`}
-            x1="0"
-            y1="0"
-            x2="1"
-            y2="1"
-          >
-            <stop offset="0" stopColor={rg[0]} />
-            <stop offset="0.55" stopColor={rg[1]} />
-            <stop offset="1" stopColor={rg[2]} />
-          </linearGradient>
-        </defs>
-
-        {/* Cam gövde */}
-        <path
-          d="M82 60 L82 140 C82 162 58 172 50 192 C42 210 40 222 40 242 L40 458 C40 492 62 502 100 502 C138 502 160 492 160 458 L160 242 C160 222 158 210 150 192 C142 172 118 162 118 140 L118 60 Z"
-          fill="url(#glass)"
-          fillOpacity="0.5"
-          stroke="#5d98ab"
-          strokeOpacity="0.55"
-          strokeWidth="3"
-        />
-        {/* Rulo yapılmış A4 not — şişenin içinde, parşömen çıkınca kaybolur */}
-        <g
-          transform="rotate(-11 100 335)"
-          style={{ opacity: noteOut ? 0 : 1, transition: "opacity 300ms" }}
-        >
-          <defs>
-            <linearGradient id="paperRoll" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stopColor="#e3cf9f" />
-              <stop offset="0.38" stopColor="#f9efd0" />
-              <stop offset="0.62" stopColor="#f3e6be" />
-              <stop offset="1" stopColor="#dcc794" />
-            </linearGradient>
-          </defs>
-          {/* Silindir gövde */}
-          <rect
-            x="77"
-            y="196"
-            width="46"
-            height="274"
-            rx="21"
-            fill="url(#paperRoll)"
-            stroke="#cdb583"
-            strokeWidth="1.5"
-          />
-          {/* Dışta kalan kağıt kenarının kıvrım çizgisi */}
-          <path
-            d="M121 206 C126 270 119 380 117 460"
-            stroke="#cdb583"
-            strokeWidth="1.5"
-            fill="none"
-          />
-          {/* Üst uç: rulonun sarmal görünen ağzı */}
-          <ellipse cx="100" cy="198" rx="23" ry="8" fill="#f2e4ba" stroke="#cdb583" strokeWidth="1.5" />
-          <ellipse cx="100" cy="198" rx="12" ry="4.5" fill="#e4d09e" stroke="#c4ab77" strokeWidth="1.2" />
-          <ellipse cx="100" cy="198" rx="4" ry="1.8" fill="#d4bd85" />
-          {/* Alt uç gölgesi */}
-          <ellipse cx="100" cy="468" rx="21" ry="6.5" fill="#d8c290" />
-        </g>
-        {/* Cam parlamaları */}
-        <rect x="52" y="215" width="13" height="240" rx="6.5" fill="#ffffff" opacity="0.45" />
-        <rect x="86" y="70" width="8" height="70" rx="4" fill="#ffffff" opacity="0.5" />
-        {/* Periyodik ışık süpürmesi — cam silüetiyle sınırlı */}
-        <g clipPath="url(#bottleClip)">
-          <rect
-            className="bottle-sheen"
-            x="0"
-            y="0"
-            width="64"
-            height="520"
-            fill="url(#sheenGrad)"
-            style={{ animationDelay: `${sheenDelay}s` }}
-          />
-        </g>
-        {/* Şişe ağzı */}
-        <ellipse
-          cx="100"
-          cy="60"
-          rx="20"
-          ry="6"
-          fill="#cfeaf2"
-          stroke="#5d98ab"
-          strokeOpacity="0.5"
-          strokeWidth="2"
-        />
-        {/* Mantar — not çıkarken fırlar */}
-        <g
-          style={{
-            transformBox: "fill-box",
-            transformOrigin: "center",
-            transform: noteOut
-              ? "translate(34px, -74px) rotate(38deg)"
-              : "none",
-            opacity: noteOut ? 0 : 1,
-            transition: "transform 500ms ease, opacity 500ms ease",
-          }}
-        >
-          <rect x="80" y="16" width="40" height="48" rx="9" fill="url(#cork)" />
-          <ellipse cx="100" cy="18" rx="19" ry="5" fill="#a97b47" />
-        </g>
-        {/* Kurdele — boğazda büyük klasik fiyonk: keskin gradientli
-            (özel renkli zarflarla aynı dil), kontursuz */}
-        <g strokeLinejoin="round">
-          {/* Boğaza sarılı bant */}
-          <rect x="76" y="118" width="48" height="16" rx="5" fill={ribbonFill} />
-          {/* Kuyruklar (kırlangıç kesimli) */}
-          <path d="M93 130 L70 172 L79 164 L86 174 L104 136 Z" fill={ribbonFill} />
-          <path d="M107 130 L130 172 L121 164 L114 174 L96 136 Z" fill={ribbonFill} />
-          {/* Fiyonk kanatları */}
-          <path
-            d="M100 126 C80 98 46 104 54 128 C60 150 88 144 100 126 Z"
-            fill={ribbonFill}
-          />
-          <path
-            d="M100 126 C120 98 154 104 146 128 C140 150 112 144 100 126 Z"
-            fill={ribbonFill}
-          />
-          {/* Kanat içi parlak vurgular — gradientin cilalı hissi */}
-          <path
-            d="M97 124 C84 110 66 112 62 124"
-            stroke="rgba(255,255,255,0.28)"
-            strokeWidth="3"
-            fill="none"
-            strokeLinecap="round"
-          />
-          <path
-            d="M103 124 C116 110 134 112 138 124"
-            stroke="rgba(255,255,255,0.28)"
-            strokeWidth="3"
-            fill="none"
-            strokeLinecap="round"
-          />
-          {/* Beyaz düğüm */}
-          <rect
-            x="91"
-            y="117"
-            width="18"
-            height="17"
-            rx="5"
-            fill="#ffffff"
-            stroke="rgba(0,0,0,0.15)"
-            strokeWidth="1"
-          />
-        </g>
-        {/* Sticker — camın üstüne yapıştırılmış */}
-        <text
-          x="60"
-          y="240"
-          fontSize="44"
-          textAnchor="middle"
-          dominantBaseline="central"
-          transform="rotate(-14 60 240)"
-        >
-          {sticker}
-        </text>
-      </svg>
-
-      {/* Kağıt etiket — şişeyi saran bant: kenarlarda silindirik gölge */}
-      {label && (
-        <div
-          className="absolute left-[19.5%] top-[52%] w-[61%] rounded-[3px] border-y border-[#dcc7a0] px-1.5 py-1.5 shadow-[0_3px_8px_rgba(0,0,0,0.15)]"
-          style={{
-            background:
-              "linear-gradient(90deg, rgba(90,70,30,0.22), rgba(90,70,30,0.04) 14%, rgba(90,70,30,0) 30%, rgba(90,70,30,0) 70%, rgba(90,70,30,0.05) 86%, rgba(90,70,30,0.24)), linear-gradient(165deg,#faf1dd,#efdfbc)",
-          }}
-        >
-          {label}
-        </div>
-      )}
-
-      {/* Gerçekleşti bandı — şişeyi yatayda saran yeşil şerit, etiketin altında */}
-      {realized && (
-        <div
-          className="absolute left-[19.5%] top-[72%] w-[61%] rounded-[3px] border-y border-emerald-700/30 text-center font-bold uppercase text-white shadow-[0_2px_6px_rgba(0,0,0,0.2)]"
-          style={{
-            background:
-              "linear-gradient(90deg, rgba(0,0,0,0.3), rgba(0,0,0,0.06) 14%, rgba(0,0,0,0) 30%, rgba(0,0,0,0) 70%, rgba(0,0,0,0.08) 86%, rgba(0,0,0,0.32)), linear-gradient(165deg, #34d399, #059669)",
-            fontSize: bandFs,
-            letterSpacing: "0.1em",
-            padding: `${bandFs * 0.35}px 0`,
-          }}
-        >
-          Gerçekleşti
-        </div>
-      )}
-    </div>
-  );
 }
 
 function BottlePopup({
@@ -875,7 +612,7 @@ function EnvelopeCard({
   return (
     <div
       id={`env-${envelope.id}`}
-      className="env-wrap absolute"
+      className={`env-wrap absolute ${highlighted ? "env-shake" : ""}`}
       style={{
         width: w,
         left: pos.x - (w - envW) / 2,
@@ -1051,248 +788,13 @@ function EnvelopeCard({
 // uçar, kapağı yana savrulur ve içinden manifest kartı yükselir.
 const GIFT_ENV = {
   name: "Magna Aliqua",
-  code: "MF-777",
+  code: "77777MD",
   luck: 268,
   date: "3 Mayıs 2026",
   manifest:
     "Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.",
 };
 
-// Karton kalınlığı katmanının clip yolu: gövde + sağ/alt taşma, uçları 45°
-// pahlı. Pah köşeleri küçük quadratic eğrilerle hafifçe yuvarlatılır.
-// w/h gövde boyutu, u ölçü birimi (taşma 8u, pah 13u, yuvarlatma ~3u).
-function giftDepthClip(w: number, h: number, u: number) {
-  const W = w + 8 * u;
-  const H = h + 8 * u;
-  const C = 13 * u;
-  const r = 3 * u;
-  const q = 2.1 * u;
-  return `path('M 0 0 L ${W - C - r} 0 Q ${W - C} 0 ${W - C + q} ${q} L ${W - q} ${C - q} Q ${W} ${C} ${W} ${C + r} L ${W} ${H} L ${C + q} ${H} Q ${C} ${H} ${C - q} ${H - q} L ${q} ${H - C + q} Q 0 ${H - C} 0 ${H - C - r} Z')`;
-}
-
-// Tepeden hediye kutusu — dikey dikdörtgen, kalp desenli kırmızı ambalaj,
-// beyaz saten kurdele sol üstte kesişir ve fiyonkla bağlanır. Sağ kenardan
-// görünen koyu yan yüz + ofsetli gölge, hafif açıyla bakılan 3D hissi verir.
-// size = kutunun genişliği; yükseklik 1.32 katıdır.
-function GiftBoxVisual({
-  size,
-  name,
-  luck,
-  depth = true,
-  glow = false,
-  realized = false,
-  cheers = 0,
-}: {
-  size: number;
-  name: string;
-  luck: number;
-  // Kapak tek başına uçarken kalınlık gövdede kalır: popup kapağında false
-  depth?: boolean;
-  // Kapak arasından sızan ışık — duvardaki kapalı kutuda yanar
-  glow?: boolean;
-  // Gerçekleşen manifestte etikete 👏 sütunu eklenir (şişeyle aynı format)
-  realized?: boolean;
-  cheers?: number;
-}) {
-  const u = size / 150;
-  const h = size * 1.32;
-  return (
-    <div className="relative" style={{ width: size, height: h }}>
-      {/* Kapak arasından sızan ışık: dönen ışın demeti + nefes alan hare */}
-      {glow && (
-        <>
-          <div
-            className="pointer-events-none absolute"
-            style={{ inset: -22 * u }}
-          >
-            <div
-              className="gift-rays absolute inset-0"
-              style={{
-                background:
-                  "repeating-conic-gradient(from 0deg, rgba(255,178,56,0) 0deg, rgba(255,178,56,0.5) 4deg, rgba(255,178,56,0) 8deg 30deg)",
-                WebkitMaskImage:
-                  "radial-gradient(closest-side, rgba(0,0,0,1) 40%, rgba(0,0,0,0.4) 60%, transparent 72%)",
-                maskImage:
-                  "radial-gradient(closest-side, rgba(0,0,0,1) 40%, rgba(0,0,0,0.4) 60%, transparent 72%)",
-              }}
-            />
-          </div>
-        </>
-      )}
-      {/* Karton kalınlığı — gövdeden sağa ve alta taşan tek parça. Uçları
-          45° pahla kesilir: kenar, gövde köşesinden perspektif yönünde
-          kırılıp biter (gerçek kutu kenarı gibi), taşma/kulak kalmaz */}
-      {depth && (
-        <div
-          className="absolute"
-          style={{
-            top: 0,
-            left: 0,
-            right: -8 * u,
-            bottom: -8 * u,
-            borderRadius: 5 * u,
-            background: "linear-gradient(135deg, #a3865a, #7c6440)",
-            clipPath: giftDepthClip(size, h, u),
-          }}
-        />
-      )}
-      {/* Üst yüz — kraft ambalaj */}
-      <div
-        className="absolute inset-0 overflow-hidden"
-        style={{
-          borderRadius: 5 * u,
-          background:
-            "linear-gradient(135deg, #dcc194, #c6a575 70%, #b8955f)",
-          boxShadow: `${6 * u}px ${9 * u}px ${18 * u}px rgba(0,0,0,0.3)`,
-        }}
-      >
-        {/* Bordo kurdele — şişe kurdelesiyle aynı keskin geçişli gradyan.
-            Dikey %38'de, yatay %26'da kesişir */}
-        <div
-          className="absolute inset-y-0"
-          style={{
-            left: "38%",
-            width: 17 * u,
-            transform: "translateX(-50%)",
-            background:
-              "linear-gradient(135deg, #9e2439, #5c0f1d 55%, #7b1526)",
-          }}
-        />
-        <div
-          className="absolute inset-x-0"
-          style={{
-            top: "26%",
-            height: 17 * u,
-            background:
-              "linear-gradient(135deg, #9e2439, #5c0f1d 55%, #7b1526)",
-          }}
-        />
-        {/* Sol üstten vuran ışık */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "linear-gradient(125deg, rgba(255,255,255,0.22), transparent 55%)",
-          }}
-        />
-      </div>
-      {/* Kapak çevresinden sızan amber ışık — kapak hattının hemen dışına,
-          sağ/alt karton kalınlığının da üstüne vurur */}
-      {glow && (
-        <div className="pointer-events-none absolute inset-0">
-          <div
-            className="gift-leak absolute inset-0"
-            style={{
-              borderRadius: 5 * u,
-              boxShadow: `0 0 ${9 * u}px ${1.5 * u}px rgba(255,186,64,0.95), 0 0 ${26 * u}px ${10 * u}px rgba(255,170,45,0.5)`,
-            }}
-          />
-        </div>
-      )}
-      {/* Fiyonk — şişedeki kurdeleyle aynı dil: keskin geçişli bordo
-          gradyan, kontursuz */}
-      <svg
-        viewBox="0 0 100 90"
-        className="absolute"
-        style={{
-          left: "38%",
-          top: "26%",
-          width: 92 * u,
-          transform: "translate(-50%, -44%)",
-        }}
-      >
-        <defs>
-          <linearGradient id="giftBowGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#9e2439" />
-            <stop offset="0.55" stopColor="#5c0f1d" />
-            <stop offset="1" stopColor="#7b1526" />
-          </linearGradient>
-        </defs>
-        {/* Kuyruklar */}
-        <path
-          d="M50 46 C40 60 28 68 18 82 L30 78 C38 66 46 58 50 46 Z"
-          fill="url(#giftBowGrad)"
-        />
-        <path
-          d="M50 46 C58 58 70 64 80 74 L70 60 C62 54 54 50 50 46 Z"
-          fill="url(#giftBowGrad)"
-        />
-        {/* Yukarı kıvrılan kurdele ucu */}
-        <path
-          d="M52 44 C50 28 56 16 50 4 C64 12 60 30 58 44 Z"
-          fill="url(#giftBowGrad)"
-        />
-        {/* Fiyonk kanatları */}
-        <path
-          d="M50 46 C26 16 4 26 10 44 C15 58 36 56 50 46 Z"
-          fill="url(#giftBowGrad)"
-        />
-        <path
-          d="M50 46 C70 14 94 22 90 40 C86 55 64 54 50 46 Z"
-          fill="url(#giftBowGrad)"
-        />
-        <circle cx="50" cy="45" r="6.5" fill="url(#giftBowGrad)" />
-      </svg>
-      {/* Kağıt etiket — şişelerdeki bantla aynı dil: ⭐ beğeni + rumuz.
-          Kutuya göre dikine durur (90° dönük), sağ tarafta kurdelesiz alanda */}
-      <div
-        className="pointer-events-none absolute flex flex-col items-center rounded-[3px] border-y border-[#dcc7a0] shadow-[0_3px_8px_rgba(0,0,0,0.15)]"
-        style={{
-          right: -25 * u,
-          bottom: 40 * u,
-          width: 116 * u,
-          gap: 3 * u,
-          padding: `${7 * u}px ${8 * u}px`,
-          background:
-            "linear-gradient(90deg, rgba(90,70,30,0.22), rgba(90,70,30,0.04) 14%, rgba(90,70,30,0) 30%, rgba(90,70,30,0) 70%, rgba(90,70,30,0.05) 86%, rgba(90,70,30,0.24)), linear-gradient(165deg,#faf1dd,#efdfbc)",
-          transform: "rotate(-90deg)",
-        }}
-      >
-        <span
-          className="flex items-start justify-center"
-          style={{ gap: 8 * u }}
-        >
-          <span className="flex flex-col items-center gap-[2px]">
-            <span
-              className="leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]"
-              style={{ fontSize: Math.max(9, 10 * u) }}
-            >
-              ⭐
-            </span>
-            <span
-              className="font-semibold leading-none"
-              style={{ color: "#8a6d33", fontSize: Math.max(10, 11 * u) }}
-            >
-              {luck.toLocaleString("tr-TR")}
-            </span>
-          </span>
-          {realized && (
-            <span className="flex flex-col items-center gap-[2px]">
-              <span
-                className="leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]"
-                style={{ fontSize: Math.max(9, 10 * u) }}
-              >
-                👏
-              </span>
-              <span
-                className="font-semibold leading-none"
-                style={{ color: "#8a6d33", fontSize: Math.max(10, 11 * u) }}
-              >
-                {cheers.toLocaleString("tr-TR")}
-              </span>
-            </span>
-          )}
-        </span>
-        <span
-          className="w-full truncate text-center font-hand font-semibold leading-none"
-          style={{ color: "#6b5426", fontSize: Math.max(12, 15 * u) }}
-        >
-          {name}
-        </span>
-      </div>
-    </div>
-  );
-}
 
 // Kutu popup'ı — zarf/şişe akışıyla aynı: duvardan ortaya uçar, kapağı
 // sol üste savrulur, manifest kartı kutunun içinden yükselir
@@ -1801,8 +1303,9 @@ function ManifestPopup({
                 <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-neutral-400 max-[520px]:text-[9.5px]">
                   {envelope.sponsored ? "Sponsorlu • Sürpriz" : "Manifest"}
                 </p>
-                <p className="font-mono text-[11px] tracking-wider text-neutral-400 max-[520px]:text-[9.5px]">
+                <p className="flex items-center gap-1.5 font-mono text-[11px] tracking-wider text-neutral-400 max-[520px]:text-[9.5px]">
                   {envelope.code}
+                  <CopyBtn text={envelope.code} />
                 </p>
               </div>
               <p className="mt-4 text-[14px] leading-relaxed text-neutral-700 max-[520px]:text-[13px]">
@@ -2080,7 +1583,65 @@ function ManifestPopup({
 }
 
 export default function Home() {
-  const envelopes = useMemo(buildEnvelopes, []);
+  const baseEnvelopes = useMemo(buildEnvelopes, []);
+
+  // Üyelerin panelden yazdığı manifestler duvara eklenir (demo:
+  // localStorage'dan; canlıda backend'den gelir). Baraj kuralları duvarla
+  // aynı uygulanır: 20+ sticker, 50+ özel renk, 150+ şişe
+  const [memberEnvs, setMemberEnvs] = useState<Envelope[]>([]);
+  useEffect(() => {
+    const list: Envelope[] = [];
+    let id = MEMBER_ID_BASE;
+    for (const u of getUsers()) {
+      for (const m of u.manifests) {
+        const seed = mulberry32(m.ts % 2147483647 || 1);
+        const pc = PANEL_COLORS[m.colorIdx % PANEL_COLORS.length];
+        const d = new Date(m.ts);
+        const env: Envelope = {
+          id: id++,
+          name: m.name,
+          manifest: m.manifest,
+          jx: seed(),
+          jy: seed(),
+          zr: Math.floor(seed() * 4),
+          rotation: -28 + seed() * 56,
+          color: { base: pc.base, dark: pc.dark, ink: pc.ink },
+          luck: m.luck,
+          cheers: m.realized ? m.cheers : 0,
+          views: m.views,
+          code: m.code,
+          date: m.date,
+          year: d.getFullYear(),
+          month: d.getMonth() + 1,
+          realized: m.realized,
+          realizedDate: m.realizedDate,
+          ts: m.ts,
+        };
+        // Sticker'ı üye panelden kendisi seçer; seçmediyse zarf süssüz kalır
+        if (m.sticker)
+          env.sticker = {
+            emoji: m.sticker,
+            left: seed() < 0.5 ? 24 : 76,
+            rotation: -25 + seed() * 50,
+          };
+        // Özel rengi (50+ hak) üye panelden kendisi seçer; şişe kurdelesi
+        // de aynı renk ailesini kullanır
+        if (m.special != null) {
+          env.color = SPECIALS[m.special % SPECIALS.length];
+          env.ribbon = m.special;
+        }
+        // Şişeye koyma (150+ hak) da üyenin onayıyla olur
+        if (m.bottled) env.bottled = true;
+        list.push(env);
+      }
+    }
+    setMemberEnvs(list);
+  }, []);
+
+  const envelopes = useMemo(
+    () => [...baseEnvelopes, ...memberEnvs],
+    [baseEnvelopes, memberEnvs],
+  );
   const [selected, setSelected] = useState<{
     env: Envelope;
     origin: Origin;
@@ -2199,9 +1760,12 @@ export default function Home() {
       : 8;
     const sectionH = topOffset + rows * m.rowStep + m.envH + 40;
 
-    // Günlük Fisher-Yates karıştırması
+    // Günlük Fisher-Yates karıştırması — yalnızca duvarın kendi zarfları.
+    // Üye zarfları karışıma girmez: yeni manifest eklendiğinde duvar
+    // baştan karılmaz, aşağıda kendi sabit slotlarına sokulurlar
     const shuffleRand = mulberry32(daySeed);
-    let order = [...visible];
+    const memberOrder = visible.filter((e) => e.id >= MEMBER_ID_BASE);
+    let order = visible.filter((e) => e.id < MEMBER_ID_BASE);
     for (let i = order.length - 1; i > 0; i--) {
       const j = Math.floor(shuffleRand() * (i + 1));
       [order[i], order[j]] = [order[j], order[i]];
@@ -2220,6 +1784,14 @@ export default function Home() {
         rest.splice(at, 0, s);
       });
       order = rest;
+    }
+
+    // Üye zarfı, koduna bağlı sabit rastgele slota sokulur: o noktada yer
+    // açılır, yalnızca sonrasındakiler bir hücre kayar — duvar karılmaz
+    for (const m of memberOrder) {
+      const slotRand = mulberry32(m.ts % 2147483647 || 1);
+      const at = Math.floor(slotRand() * (order.length + 1));
+      order.splice(at, 0, m);
     }
 
     const pos = new Map<number, Pos>();
@@ -2368,14 +1940,16 @@ export default function Home() {
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const q = query.trim().toUpperCase();
+  // Kodu bul, konumuna kaydır ve zarfı parlat — arama formu ve panelden
+  // "Duvara As" yönlendirmesi (?kod=) ortak kullanır
+  const jumpToCode = (raw: string) => {
+    const q = raw.trim().toUpperCase().replace(/[\s-]/g, "");
     if (!q) return;
-    // "MF-042", "mf042" veya sadece "42" kabul edilir
-    const num = q.match(/(\d+)/)?.[1];
+    // Tam kod ("48213KT") veya yalnızca 5 rakamlı kısmı kabul edilir
+    const num = /^\d{1,5}$/.test(q) ? q : null;
     const env = envelopes.find(
-      (en) => en.code === q || (num && en.code === `MF-${num.padStart(3, "0")}`),
+      (en) =>
+        en.code === q || (num && en.code.slice(0, 5) === num.padStart(5, "0")),
     );
     if (!env) {
       setSearchErr(true);
@@ -2415,6 +1989,30 @@ export default function Home() {
     if (highlightTimer.current) clearTimeout(highlightTimer.current);
     highlightTimer.current = setTimeout(() => setHighlightId(null), 4000);
   };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    jumpToCode(query);
+  };
+
+  // Panelden "Duvara As" ile gelindiyse (?kod=XXXXX): kod arama kutusuna
+  // yazılır, zarf bulunup vurgulanır. Üye zarfları yüklendikten sonra çalışır
+  const jumpedRef = useRef(false);
+  useEffect(() => {
+    if (jumpedRef.current) return;
+    const kod = new URLSearchParams(window.location.search).get("kod");
+    if (!kod) {
+      jumpedRef.current = true;
+      return;
+    }
+    if (!memberEnvs.length) return;
+    jumpedRef.current = true;
+    setQuery(kod.toUpperCase());
+    // Yerleşim hesaplanıp zarf duvara oturduktan sonra kaydır
+    const t = setTimeout(() => jumpToCode(kod), 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memberEnvs]);
 
   // İnen zarfla temas hâlindeki komşuları bul ve itme vektörlerini hesapla
   const displaced = useMemo(() => {
@@ -2471,11 +2069,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Header */}
-      <header className="sticky top-0 z-[1500] flex h-16 shrink-0 items-center justify-center border-b border-neutral-300/70 bg-white/70 backdrop-blur">
-        <span className="rounded border border-dashed border-neutral-400 px-4 py-1.5 text-xs font-medium uppercase tracking-[0.25em] text-neutral-400">
-          Burası header alanı
-        </span>
+      {/* Header — ortak bileşen; arama paneli children olarak asılır */}
+      <SiteHeader>
 
         {/* Manifest arama + yıl/ay filtresi — header'dan sarkan panel */}
         <form
@@ -2544,7 +2139,7 @@ export default function Home() {
             {filteredCount.toLocaleString("tr-TR")} manifest
           </span>
         </form>
-      </header>
+      </SiteHeader>
 
       {/* Zarf duvarı — aşağı kaydırılabilir, satırlar görünür oldukça yüklenir */}
       <section
@@ -2644,7 +2239,7 @@ export default function Home() {
             >
               <BottleVisual
                 sticker={b.env.sticker?.emoji ?? "🦋"}
-                ribbon={b.env.id % RIBBON_GRADS.length}
+                ribbon={b.env.ribbon ?? b.env.id % RIBBON_GRADS.length}
                 sheenDelay={i * 0.9}
                 realized={b.env.realized}
                 bandFs={Math.max(8, 10 * (layout.bottleW / 160))}

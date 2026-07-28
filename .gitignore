@@ -1,0 +1,14 @@
+# Next.js build çıktıları ve önbellek — repoya girmez (GitHub 100MB sınırı)
+/.next/
+/out/
+
+# Bağımlılıklar
+/node_modules/
+
+# Ortam değişkenleri
+.env*
+
+# Çeşitli
+npm-debug.log*
+.DS_Store
+*.tsbuildinfo

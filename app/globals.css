@@ -35,6 +35,36 @@ body {
   animation: env-glow 0.9s ease-in-out 4;
 }
 
+/* Arama ile bulunan zarfın kuvvetli sallanması — parlamayla birlikte oynar */
+@keyframes env-shake {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  10% {
+    transform: translateX(-9px) rotate(-6deg);
+  }
+  25% {
+    transform: translateX(9px) rotate(6deg);
+  }
+  40% {
+    transform: translateX(-8px) rotate(-5deg);
+  }
+  55% {
+    transform: translateX(8px) rotate(5deg);
+  }
+  70% {
+    transform: translateX(-6px) rotate(-3deg);
+  }
+  85% {
+    transform: translateX(6px) rotate(3deg);
+  }
+}
+
+.env-shake {
+  animation: env-shake 0.6s ease-in-out 6;
+}
+
 /* Şans dile — hover'da yerinde zıplama */
 @keyframes wish-bounce {
   0%,
@@ -145,6 +175,57 @@ body {
 
 .gift-spark {
   animation: gift-spark 2.6s ease-out infinite;
+}
+
+/* "Sticker'ını Ekle" butonu — çevresinde yanıp sönen amber halka */
+@keyframes sticker-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+  }
+}
+
+.sticker-pulse {
+  animation: sticker-pulse 1.5s ease-out infinite;
+}
+
+/* "Özel Rengini Seç" butonu — altın tonlu yanıp sönen halka */
+@keyframes special-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(229, 193, 92, 0.65);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(229, 193, 92, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(229, 193, 92, 0);
+  }
+}
+
+.special-pulse {
+  animation: special-pulse 1.5s ease-out infinite;
+}
+
+/* "Şişeye Koy" butonu — cam mavisi yanıp sönen halka */
+@keyframes bottle-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(93, 152, 171, 0.65);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(93, 152, 171, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(93, 152, 171, 0);
+  }
+}
+
+.bottle-pulse {
+  animation: bottle-pulse 1.5s ease-out infinite;
 }
 
 /* Şişe camında arada bir geçen ışık süpürmesi */
