@@ -11,145 +11,22 @@ import {
 } from "react";
 import SiteHeader from "./components/SiteHeader";
 import CopyBtn from "./components/CopyBtn";
-import { getUsers, PANEL_COLORS } from "./lib/auth";
+import { getUsers, saveUser, PANEL_COLORS } from "./lib/auth";
 import {
   BottleVisual,
   GiftBoxVisual,
   giftDepthClip,
   RIBBON_GRADS,
-  SPECIAL_COLORS,
-  STICKER_EMOJIS,
 } from "./components/RewardVisuals";
-
-type EnvelopeColor = {
-  base: string;
-  dark: string;
-  ink: string;
-  bodyBg?: string; // gradient gövde (özel seri)
-  flapBg?: string; // gradient kapak (özel seri)
-  gloss?: boolean; // parlak yüzey efekti (özel seri)
-};
-
-type Sticker = {
-  emoji: string;
-  left: number; // % — sabit slotlardan biri (sol/sağ)
-  rotation: number; // deg
-};
-
-type Envelope = {
-  id: number;
-  name: string;
-  manifest: string;
-  jx: number; // 0-1 — yatay serpme tohumu
-  jy: number; // 0-1 — dikey serpme tohumu
-  zr: number; // 0-3 — z-index tohumu
-  rotation: number; // deg
-  color: EnvelopeColor;
-  sticker?: Sticker;
-  luck: number; // kaç kişi şans diledi
-  cheers: number; // kaç kişi tebrik etti
-  views: number; // görüntülenme sayısı (şimdilik rastgele; ileride IP bazlı)
-  code: string; // manifeste özel arama kodu — 5 rakam + 2 harf (örn. 48213KT)
-  date: string; // zarfın eklendiği tarih
-  year: number; // filtreleme için
-  month: number; // 1-12, filtreleme için
-  bottled?: boolean; // 150+ şans: manifest şişede sergileniyor
-  ribbon?: number; // şişe kurdele rengi (üye zarfında seçilen özel renk)
-  sponsored?: boolean; // marka zarfı (native reklam)
-  realized?: boolean; // manifest gerçekleşti: şans dondurulur, rozet taşır
-  realizedDate?: string; // gerçekleşti olarak işaretlendiği tarih
-  ts: number; // eklenme zamanı (timestamp — türetilmiş alanlar için)
-};
-
-// 7 haneli manifest kodu: 5 rakam + 2 harf, ayraçsız (örn. 48213KT).
-// Rakam kısmı i'den deterministik türetilir — her zarfta benzersizdir
-const CODE_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-function makeCode(i: number, rand: () => number): string {
-  const digits = String(10000 + ((i * 48611) % 90000));
-  const l1 = CODE_LETTERS[Math.floor(rand() * 26)];
-  const l2 = CODE_LETTERS[Math.floor(rand() * 26)];
-  return `${digits}${l1}${l2}`;
-}
-
-// Üye zarflarının id aralığı — duvarın kendi zarflarından ayrışması için
-const MEMBER_ID_BASE = 900000;
-
-// Sponsor zarf teması — Petimemama marka renkleri (canlı, parlak)
-const SPONSOR_COLOR: EnvelopeColor = {
-  base: "#ffffff",
-  dark: "#5b2d9c",
-  ink: "#5b2d9c",
-  bodyBg: "linear-gradient(135deg, #ffffff, #f1e8ff 45%, #ffffff 65%, #ffe9d4)",
-  flapBg: "linear-gradient(135deg, #7c4ad0, #4a2385 60%, #6535ab)",
-  gloss: true,
-};
-
-const SPONSOR_TEXT =
-  "Petimemama'dan manifest duvarına özel bir sürpriz! Bu zarfa denk gelen " +
-  "şanslı ziyaretçilere minik dostlarının mamalarında geçerli özel bir " +
-  "hediye kodu bırakıyoruz. Kod: PETI-SURPRIZ. Manifestlerine şans, " +
-  "patili dostlarına afiyet olsun! 🐾";
-
-// Pastel palet — tüm zarflar bu 12 renkten organik dağılır
-// (orijinal tonların ~%28 beyaza çekilmiş, soluk hali)
-const PALETTE: EnvelopeColor[] = [
-  { base: "#FFC8CD", dark: "#F7ABB2", ink: "#8E3B47" }, // pastel pembe
-  { base: "#FFE8CD", dark: "#F9D4B0", ink: "#8A5A2A" }, // pastel şeftali
-  { base: "#FFFFCD", dark: "#F4F3AD", ink: "#7A7420" }, // pastel sarı
-  { base: "#CDFFD8", dark: "#AEEFC0", ink: "#2E7C48" }, // pastel nane yeşili
-  { base: "#CDEAFF", dark: "#AED6F6", ink: "#2F5E8C" }, // pastel bebek mavisi
-  { base: "#EBCDFF", dark: "#DAB2F7", ink: "#6D3A96" }, // pastel lila
-  { base: "#FFD7E6", dark: "#F7BDD4", ink: "#94436A" }, // pastel gül kurusu
-  { base: "#BCDFFF", dark: "#9ECCF4", ink: "#2A5A8C" }, // pastel gökyüzü mavisi
-  { base: "#DAC9E5", dark: "#C8B2D6", ink: "#5C3F70" }, // pastel leylak
-  { base: "#C9F0E2", dark: "#ACE3CF", ink: "#2F6E58" }, // pastel su yeşili
-  { base: "#FFE5D2", dark: "#F7CFB5", ink: "#8A5230" }, // pastel kayısı
-  { base: "#D6DBF0", dark: "#BEC5E4", ink: "#47517E" }, // pastel lavanta mavisi
-];
-
-// Özel seri — parlak, gradientli, duvarda kendini belli eden 4 renk.
-// Tanımlar (anlam etiketleriyle) RewardVisuals'ta; duvar renk sırası
-// dönüşümlü atanırken üye zarfları panelden seçilen rengi kullanır
-const SPECIALS: EnvelopeColor[] = SPECIAL_COLORS.map((s) => s.color);
-
-// Şişe kurdele gradyanları — özel seri renklerinin keskin geçişli halleri
-const WORDS = [
-  "Lorem", "Ipsum", "Dolor", "Amet", "Consec", "Elit", "Tempor",
-  "Magna", "Aliqua", "Veniam", "Nostrud", "Ullamco", "Nisi", "Aliquip",
-  "Commodo", "Duis", "Aute", "Irure", "Velit", "Esse", "Cillum",
-  "Fugiat", "Nulla", "Pariatur", "Culpa", "Officia", "Mollit", "Sed",
-];
-
-const SENTENCES = [
-  "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
-  "Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
-  "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.",
-  "Nisi ut aliquip ex ea commodo consequat, duis aute irure dolor.",
-  "In reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla.",
-  "Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia.",
-  "Deserunt mollit anim id est laborum, sed ut perspiciatis unde omnis.",
-  "Iste natus error sit voluptatem accusantium doloremque laudantium.",
-  "Totam rem aperiam, eaque ipsa quae ab illo inventore veritatis.",
-  "Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit.",
-];
-
-// Seed'li rastgelelik: sunucu ve istemci aynı sonucu üretsin (hydration uyumu)
-function mulberry32(seed: number) {
-  let a = seed;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-const TOTAL = 1000; // toplam zarf
-
-// Reklam alanları (topbar + 2 banner) — admin panel yapılınca oradan
-// açılıp kapatılacak; şimdilik kapalı kabul ediyoruz
-const ADS_ENABLED = false;
+import {
+  ADS_KEY,
+  buildEnvelopes,
+  MEMBER_ID_BASE,
+  mulberry32,
+  SPECIALS,
+  TEST_KEY,
+  type Envelope,
+} from "./lib/wallData";
 
 const MONTHS_TR = [
   "Ocak",
@@ -188,169 +65,6 @@ function makeLayoutMetrics(vw: number, cols: number) {
   };
 }
 
-function buildEnvelopes(): Envelope[] {
-  const rand = mulberry32(20260726);
-  const list: Envelope[] = [];
-
-  for (let i = 0; i < TOTAL; i++) {
-    // Sıralama konumu render'da sütun sayısına göre hesaplanır;
-    // burada yalnızca "popülerlik sırası" için kaba satır kullanılır
-    const row = Math.floor(i / 10);
-
-    let name = WORDS[Math.floor(rand() * WORDS.length)];
-    if (rand() > 0.55) {
-      name += " " + WORDS[Math.floor(rand() * WORDS.length)];
-    }
-
-    const sentenceCount = 4 + Math.floor(rand() * 3);
-    const sentences: string[] = [];
-    for (let s = 0; s < sentenceCount; s++) {
-      sentences.push(SENTENCES[Math.floor(rand() * SENTENCES.length)]);
-    }
-    // Manifest metni en fazla 300 karakter (ürün kuralı)
-    let manifest = "";
-    for (const s of sentences) {
-      const next = manifest ? `${manifest} ${s}` : s;
-      if (next.length > 300) break;
-      manifest = next;
-    }
-
-    // Seed dizilimi bozulmasın diye eski palet seçiminin rand() çağrısı korunuyor
-    rand();
-
-    // Şans dağılımı — baraj bantlarına göre tasarlandı (oylar e-posta
-    // onaylı üyelerden geldiği için barajlar düşük tutuldu):
-    // %68 → 0-19 (sade) • %22 → 20-49 (sticker hakkı)
-    // %9 → 50-149 (parlak renk hakkı) • %1 → 150+ (şişe hakkı)
-    const lr = rand();
-    const luck = Math.floor(
-      lr < 0.68
-        ? (lr / 0.68) * 19
-        : lr < 0.9
-          ? 20 + ((lr - 0.68) / 0.22) * 29
-          : lr < 0.99
-            ? 50 + ((lr - 0.9) / 0.09) * 99
-            : 150 + ((lr - 0.99) / 0.01) * 550,
-    );
-
-    // Tarih için "yaş" değeri (eski zarflar üst id'lerde)
-    const t = (99 - row) / 99;
-
-    // Görüntülenme, şans sayısının birkaç katı + rastgele pay
-    const views = Math.floor(luck * (2.5 + rand() * 2) + rand() * 150);
-
-    // Eklenme tarihi: üstteki (popüler) zarflar eski, alttakiler yeni
-    // (sabit referans tarihinden geriye gidilir — deterministik)
-    const daysAgo = Math.floor(4 + t * 160 + rand() * 25);
-    const added = new Date(2026, 6, 26);
-    added.setDate(added.getDate() - daysAgo);
-    const date = added.toLocaleDateString("tr-TR", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-
-    list.push({
-      luck,
-      cheers: 0, // gerçekleşme durumuna göre aşağıda doldurulur
-      views,
-      ts: added.getTime(),
-      date,
-      year: added.getFullYear(),
-      month: added.getMonth() + 1,
-      code: makeCode(i, rand),
-      id: i,
-      name,
-      manifest,
-      jx: rand(),
-      jy: rand(),
-      rotation: -28 + rand() * 56,
-      zr: Math.floor(rand() * 4),
-      color: PALETTE[Math.floor(rand() * PALETTE.length)],
-    });
-  }
-
-  // Baraj kuralları — barajı geçen herkes hakkını kullanmış kabul edilir
-  // (e-posta bildirimi gider: "20/50/150 barajını geçtin!")
-  const SLOTS = [24, 76];
-  let sk = 0;
-  for (const env of list) {
-    // 20+ şans → sticker
-    if (env.luck >= 20) {
-      env.sticker = {
-        emoji: STICKER_EMOJIS[Math.floor(rand() * STICKER_EMOJIS.length)],
-        left: SLOTS[Math.floor(rand() * SLOTS.length)],
-        rotation: -25 + rand() * 50,
-      };
-    }
-    // 50+ şans → parlak renk (sırayla döner)
-    if (env.luck >= 50) {
-      env.color = SPECIALS[sk % SPECIALS.length];
-      sk++;
-    }
-    // 150+ şans → manifest şişelenir
-    if (env.luck >= 150) {
-      env.bottled = true;
-    }
-  }
-
-  // 10 sponsor zarfı (marka: Petimemama) — duvara serpiştirilir
-  const sponsorSet = new Set<number>();
-  while (sponsorSet.size < 10) {
-    const idx = Math.floor(rand() * list.length);
-    if (list[idx].bottled) continue;
-    sponsorSet.add(idx);
-  }
-  for (const idx of sponsorSet) {
-    const env = list[idx];
-    env.sponsored = true;
-    env.name = "Sürpriz";
-    env.color = SPONSOR_COLOR;
-    env.sticker = undefined;
-    env.manifest = SPONSOR_TEXT;
-  }
-
-  // Birkaç manifest gerçekleşmiş: yeşil rozet taşır, şans dilenemez
-  const realizedSet = new Set<number>();
-  while (realizedSet.size < 8) {
-    const idx = Math.floor(rand() * list.length);
-    if (list[idx].bottled || list[idx].sponsored) continue;
-    realizedSet.add(idx);
-  }
-  for (const idx of realizedSet) {
-    list[idx].realized = true;
-  }
-
-  // 2 şişelenmiş manifest de gerçekleşmiş olsun
-  let bottledRealized = 0;
-  for (const env of list) {
-    if (env.bottled && bottledRealized < 2) {
-      env.realized = true;
-      bottledRealized++;
-    }
-  }
-
-  // Tebrik sayısı yalnızca gerçekleşen manifestlerde olur; gerçekleşme
-  // tarihi de eklenme ile bugün arasında rastgele bir güne düşer
-  const REF_TS = new Date(2026, 6, 26).getTime();
-  for (const env of list) {
-    env.cheers = env.realized
-      ? Math.floor(env.luck * 0.6 + rand() * 60)
-      : 0;
-    if (env.realized) {
-      const span = Math.max(0, REF_TS - env.ts);
-      const at = new Date(env.ts + 5 * 86400000 + rand() * span * 0.9);
-      env.realizedDate = at.toLocaleDateString("tr-TR", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      });
-    }
-  }
-
-  return list;
-}
-
 type Origin = { cx: number; cy: number; w: number; h: number };
 
 // ── Şişedeki Not — 150+ şans dilenmiş manifestler şişede sergilenir ─────
@@ -365,6 +79,7 @@ type BottleData = {
   sticker: string;
   ribbon: number; // RIBBON_GRADS indeksi
   realized: boolean;
+  realizedDate?: string;
   cheers: number;
 };
 
@@ -380,6 +95,35 @@ function toBottleData(env: Envelope, rot: number): BottleData {
     sticker: env.sticker?.emoji ?? "🦋",
     ribbon: env.ribbon ?? env.id % RIBBON_GRADS.length,
     realized: !!env.realized,
+    realizedDate: env.realizedDate,
+    cheers: env.cheers,
+  };
+}
+
+// Şans dileğini üye manifestine kalıcı yazar (demo zarflarında no-op) —
+// panel ödül akışları duvardan dilenen şansla test edilebilsin
+function persistLuck(code: string, delta: number) {
+  for (const u of getUsers()) {
+    const m = u.manifests.find((x) => x.code === code);
+    if (m) {
+      m.luck += delta;
+      saveUser(u);
+      return;
+    }
+  }
+}
+
+// Kutu popup'ına giden veri — LetterCard'ın beklediği ortak biçim
+function toGiftData(env: Envelope): LetterInfo {
+  return {
+    name: env.name,
+    code: env.code,
+    manifest: env.manifest,
+    date: env.date,
+    views: env.views,
+    luck: env.luck,
+    realized: !!env.realized,
+    realizedDate: env.realizedDate,
     cheers: env.cheers,
   };
 }
@@ -388,17 +132,17 @@ function BottlePopup({
   bottle,
   origin,
   onClose,
+  onWish,
 }: {
   bottle: BottleData;
   origin: Origin;
   onClose: () => void;
+  onWish?: (delta: number) => void;
 }) {
   const [stage, setStage] = useState<"origin" | "center" | "open">("origin");
   // Notun yolculuğu: şişenin içinde → boğazda (rulo) → ağzın üstünde açık
   const [notePhase, setNotePhase] = useState<"in" | "neck" | "open">("in");
   const closingRef = useRef(false);
-  const [luck, setLuck] = useState(bottle.luck);
-  const [wished, setWished] = useState(false);
 
   const geo = useMemo(() => {
     const vw = document.documentElement.clientWidth;
@@ -490,7 +234,7 @@ function BottlePopup({
                           ⭐
                         </p>
                         <p className="text-[12px] leading-none font-semibold text-[#8a6d33]">
-                          {luck.toLocaleString("tr-TR")}
+                          {bottle.luck.toLocaleString("tr-TR")}
                         </p>
                       </div>
                       {bottle.realized && (
@@ -514,10 +258,10 @@ function BottlePopup({
           </div>
         </div>
 
-        {/* Parşömen not — yatık şişenin ağzından kıvrılarak çıkar,
-            ekranın ortasında açılır */}
+        {/* Not — yatık şişenin ağzından kıvrılarak çıkar, ekranın ortasında
+            açılır. Kağıt, zarftan çıkan mektupla aynı biçim ve genişlikte */}
         <div
-          className="absolute left-1/2 top-[46%] z-30 w-[min(88vw,430px)]"
+          className="absolute left-1/2 top-[46%] z-30 w-[min(79vw,396px)]"
           style={{
             transformOrigin: "center center",
             transform:
@@ -531,45 +275,7 @@ function BottlePopup({
               "transform 370ms cubic-bezier(0.3, 0.8, 0.3, 1), opacity 200ms ease",
           }}
         >
-          <div className="max-h-[58vh] overflow-y-auto rounded-[10px] border border-[#e2cd9f] bg-[linear-gradient(160deg,#fdf3dd,#f1e0bd)] px-8 py-7 shadow-[0_20px_50px_rgba(0,0,0,0.4)]">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[#a3813f]">
-                🍾 Şişedeki Not
-              </p>
-              <p className="font-mono text-[11px] tracking-wider text-[#a3813f]">
-                {bottle.code}
-              </p>
-            </div>
-            <p className="mt-2 font-hand text-3xl text-[#5c4718]">
-              {bottle.name}
-            </p>
-            <p className="mt-4 text-[15px] leading-relaxed text-[#5f4d26]">
-              {bottle.manifest}
-            </p>
-            <p className="mt-6 text-[11px] text-[#a3813f]">
-              {bottle.date} tarihinde denize bırakıldı
-            </p>
-            {/* İstatistikler + şans dile */}
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#dcc7a0] pt-3 text-[12px] font-medium text-[#8a6d33]">
-              <span>✉ {bottle.views.toLocaleString("tr-TR")} kişi notu okudu</span>
-              <span>⭐ {luck.toLocaleString("tr-TR")} kişi şans diledi</span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (wished) return;
-                  setWished(true);
-                  setLuck((n) => n + 1);
-                }}
-                className={`cursor-pointer rounded-full border px-3 py-1 text-[12px] font-semibold transition-all ${
-                  wished
-                    ? "border-amber-400 bg-amber-100 text-amber-700"
-                    : "border-[#c9b384] bg-white/70 text-[#6b5426] hover:border-amber-400 hover:text-amber-700"
-                }`}
-              >
-                {wished ? "⭐ Şans dilendi" : "☆ Şans dile"}
-              </button>
-            </div>
-          </div>
+          <LetterCard info={bottle} onWish={onWish} />
         </div>
 
         <button
@@ -785,31 +491,30 @@ function EnvelopeCard({
 // ── Manifest Hediye Kutusu — 250+ şans ödülü ─────────────────────────────
 // 250 şans barajını geçen manifest, duvarda tepeden görünen kurdeleli bir
 // hediye kutusunda sergilenir. Tıklayınca zarf ve şişe gibi ekran ortasına
-// uçar, kapağı yana savrulur ve içinden manifest kartı yükselir.
-const GIFT_ENV = {
-  name: "Magna Aliqua",
-  code: "77777MD",
-  luck: 268,
-  date: "3 Mayıs 2026",
-  manifest:
-    "Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.",
-};
-
+// uçar, kapağı yana savrulur ve içinden manifest kağıdı yükselir.
 
 // Kutu popup'ı — zarf/şişe akışıyla aynı: duvardan ortaya uçar, kapağı
-// sol üste savrulur, manifest kartı kutunun içinden yükselir
+// sol üste savrulur, mektup kağıdı kutunun içinden yükselir
 function GiftPopup({
+  gift,
+  rot,
+  sticker,
+  stickerRot,
   origin,
   onClose,
+  onWish,
 }: {
+  gift: LetterInfo;
+  rot: number; // duvardaki kutunun açısı — uçuş bu açıdan başlar
+  sticker?: string; // kapak üstündeki süs — duvardakiyle birebir
+  stickerRot?: number;
   origin: Origin;
   onClose: () => void;
+  onWish?: (delta: number) => void;
 }) {
   const [stage, setStage] = useState<"origin" | "center" | "open">("origin");
-  // Kapak uçarken kartın üstünde, kart yükseldikten sonra altında kalır
+  // Kapak uçarken kağıdın üstünde, kağıt yükseldikten sonra altında kalır
   const [lidZ, setLidZ] = useState(30);
-  const [luck, setLuck] = useState(GIFT_ENV.luck);
-  const [wished, setWished] = useState(false);
   const closingRef = useRef(false);
 
   const geo = useMemo(() => {
@@ -818,17 +523,17 @@ function GiftPopup({
     const popW = Math.min(window.innerWidth * 0.92, 340);
     const k = popW / 340;
     // Kutu (340x450 birim) konteynerin alt kısmında: merkez farkı 90 birim.
-    // Dönüş konteyner merkezinde olduğundan ofset 10°'lik açıyla döndürülerek
-    // telafi edilir — kutu duvardaki pozuna birebir oturur, "tık" olmaz
+    // Dönüş konteyner merkezinde olduğundan ofset kutunun duvardaki açısıyla
+    // döndürülerek telafi edilir — kutu pozuna birebir oturur, "tık" olmaz
     const off = (origin.w / 340) * 90;
-    const rad = (10 * Math.PI) / 180;
+    const rad = (rot * Math.PI) / 180;
     return {
       k,
       s: origin.w / popW,
       dx: origin.cx - vw / 2 + off * Math.sin(rad),
       dy: origin.cy - vh / 2 - off * Math.cos(rad),
     };
-  }, [origin]);
+  }, [origin, rot]);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() =>
@@ -876,7 +581,7 @@ function GiftPopup({
         style={{
           transform: atCenter
             ? "translate(-50%, -50%)"
-            : `translate(-50%, -50%) translate(${geo.dx}px, ${geo.dy}px) rotate(10deg) scale(${geo.s})`,
+            : `translate(-50%, -50%) translate(${geo.dx}px, ${geo.dy}px) rotate(${rot}deg) scale(${geo.s})`,
           transition: "transform 300ms cubic-bezier(0.3, 0.85, 0.3, 1)",
         }}
         onClick={(e) => e.stopPropagation()}
@@ -895,9 +600,10 @@ function GiftPopup({
             }}
           />
 
-          {/* Manifest kartı — kutunun içinden yükselir */}
+          {/* Mektup kağıdı — kutunun içinden yükselir; zarftan çıkan
+              mektupla aynı biçim ve genişlikte */}
           <div
-            className="absolute left-1/2 z-10 w-[88%]"
+            className="absolute left-1/2 z-10 w-[min(79vw,396px)]"
             style={{
               bottom: 40 * geo.k,
               transformOrigin: "bottom center",
@@ -910,43 +616,7 @@ function GiftPopup({
               }`,
             }}
           >
-            <div className="max-h-[58vh] overflow-y-auto rounded-[4px] bg-[#fffdf5] px-7 py-6 shadow-[0_16px_44px_rgba(0,0,0,0.35)] max-[520px]:px-5 max-[520px]:py-5">
-              <p className="font-hand text-[26px] text-neutral-800 max-[520px]:text-[22px]">
-                {GIFT_ENV.name}
-              </p>
-              <div className="mt-1 flex items-center justify-between">
-                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-neutral-400 max-[520px]:text-[9.5px]">
-                  Manifest
-                </p>
-                <p className="font-mono text-[11px] tracking-wider text-neutral-400 max-[520px]:text-[9.5px]">
-                  {GIFT_ENV.code}
-                </p>
-              </div>
-              <p className="mt-4 text-[14px] leading-relaxed text-neutral-700 max-[520px]:text-[13px]">
-                {GIFT_ENV.manifest}
-              </p>
-              <p className="mt-5 text-[11px] text-neutral-400">
-                {GIFT_ENV.date} tarihinde eklendi
-              </p>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-neutral-200 pt-3 text-[12px] font-medium text-neutral-500">
-                <span>⭐ {luck.toLocaleString("tr-TR")} kişi şans diledi</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (wished) return;
-                    setWished(true);
-                    setLuck((n) => n + 1);
-                  }}
-                  className={`cursor-pointer rounded-full border px-3 py-1 text-[12px] font-semibold transition-all ${
-                    wished
-                      ? "border-amber-400 bg-amber-100 text-amber-700"
-                      : "border-neutral-300 bg-white/80 text-neutral-600 hover:border-amber-400 hover:text-amber-700"
-                  }`}
-                >
-                  {wished ? "⭐ Şans dilendi" : "☆ Şans dile"}
-                </button>
-              </div>
-            </div>
+            <LetterCard info={gift} onWish={onWish} />
           </div>
 
           {/* Gövde katmanları kapakla (GiftBoxVisual) aynı birimi kullanır:
@@ -1056,8 +726,12 @@ function GiftPopup({
           >
             <GiftBoxVisual
               size={340 * geo.k}
-              name={GIFT_ENV.name}
-              luck={luck}
+              name={gift.name}
+              luck={gift.luck}
+              sticker={sticker}
+              stickerRot={stickerRot}
+              realized={gift.realized}
+              cheers={gift.cheers}
               depth={false}
             />
           </div>
@@ -1123,6 +797,222 @@ const WISH_STARS: {
   { dx: -8, dy: 48, rot: -10, size: 11, delay: 70, emoji: "⭐" },
 ];
 
+// ── Ortak mektup kağıdı — şişeden ve kutudan çıkan kağıtların tek biçimi ──
+// Zarftan çıkan mektupla aynı format ve genişlik: rumuz + kod + metin;
+// yazının sonunda zarf ön yüzündeki dizilimin aynısı — solda tarihler ve
+// görüntülenme, sağda şans sayısı + şans dile (gerçekleşende tebrik akışı)
+type LetterInfo = {
+  name: string;
+  code: string;
+  manifest: string;
+  date: string;
+  views: number;
+  luck: number;
+  realized?: boolean;
+  realizedDate?: string;
+  cheers?: number;
+};
+
+function LetterCard({
+  info,
+  onWish,
+}: {
+  info: LetterInfo;
+  onWish?: (delta: number) => void; // dilek sayısını kalıcılaştırma kancası
+}) {
+  // Şans dileme / tebrik (demo: yerel state, backend'de gerçek sayaca bağlanır)
+  const [luck, setLuck] = useState(info.luck);
+  const [wished, setWished] = useState(false);
+  const [cheers, setCheers] = useState(info.cheers ?? 0);
+  const [cheered, setCheered] = useState(false);
+  // Test modu (admin panelden): şans sınırsız ve +10'ar dilenir
+  const [testMode, setTestMode] = useState(false);
+  useEffect(() => setTestMode(localStorage.getItem(TEST_KEY) === "1"), []);
+  return (
+    <div className="max-h-[62vh] overflow-y-auto rounded-[4px] bg-[#fffdf5] px-8 py-7 shadow-[0_16px_44px_rgba(0,0,0,0.35)] max-[520px]:px-5 max-[520px]:py-5">
+      <p className="font-hand text-[26px] text-neutral-800 max-[520px]:text-[22px]">
+        {info.name}
+      </p>
+      <div className="mt-1 flex items-center justify-between">
+        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-neutral-400 max-[520px]:text-[9.5px]">
+          Manifest
+        </p>
+        <p className="flex items-center gap-1.5 font-mono text-[11px] tracking-wider text-neutral-400 max-[520px]:text-[9.5px]">
+          {info.code}
+          <CopyBtn text={info.code} />
+        </p>
+      </div>
+      <p className="mt-4 text-[14px] leading-relaxed text-neutral-700 max-[520px]:text-[13px]">
+        {info.manifest}
+      </p>
+
+      {/* Alt bilgi — solda tarihler + görüntülenme, sağda şans/tebrik */}
+      <div className="mt-6 flex items-end justify-between gap-3 border-t border-neutral-200 pt-3.5">
+        <div className="flex flex-col items-start gap-1 text-xs font-medium text-neutral-500 max-[520px]:gap-0.5">
+          {info.realized && (
+            <>
+              <span className="rounded-full bg-emerald-500 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-white shadow-sm max-[520px]:px-2.5 max-[520px]:py-0.5 max-[520px]:text-[8.5px]">
+                Gerçekleşti
+              </span>
+              <span className="flex items-center gap-1.5 text-[11px] opacity-90 max-[520px]:gap-1 max-[520px]:text-[9.5px]">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-4 w-4 max-[520px]:h-3.5 max-[520px]:w-3.5"
+                >
+                  <path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8" />
+                  <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                  <path d="m16 19 2 2 4-4" />
+                </svg>
+                {info.realizedDate}&apos;da &quot;gerçekleşti&quot;
+                işaretlendi
+              </span>
+            </>
+          )}
+          <span className="flex items-center gap-1.5 text-[11px] opacity-90 max-[520px]:gap-1 max-[520px]:text-[9.5px]">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-4 w-4 max-[520px]:h-3.5 max-[520px]:w-3.5"
+            >
+              <path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8" />
+              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+              <path d="M19 16v6" />
+              <path d="M16 19h6" />
+            </svg>
+            {info.date} tarihinde eklendi
+          </span>
+          {!info.realized && (
+            <span className="h-px w-full bg-current opacity-25" />
+          )}
+          <span className="flex items-center gap-1.5">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-4 w-4"
+            >
+              <path d="M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-6a2 2 0 0 1 2.4 0l8 6Z" />
+              <path d="m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10" />
+            </svg>
+            {info.views.toLocaleString("tr-TR")} kişi manifesti okudu
+          </span>
+        </div>
+
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <span className="flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-0.5 text-xs font-medium text-neutral-600 shadow-sm max-[520px]:px-2 max-[520px]:text-[10px]">
+            <span className="text-[11px] drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]">
+              ⭐
+            </span>
+            <b className="font-semibold">{luck.toLocaleString("tr-TR")}</b>{" "}
+            kişi şans {info.realized ? "dilemişti" : "diledi"}
+          </span>
+          {info.realized ? (
+            <>
+              <span className="flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-0.5 text-xs font-medium text-neutral-600 shadow-sm max-[520px]:px-2 max-[520px]:text-[10px]">
+                <span className="text-[11px] drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]">
+                  👏
+                </span>
+                <b className="font-semibold">
+                  {cheers.toLocaleString("tr-TR")}
+                </b>{" "}
+                kişi tebrik etti
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (cheered) return;
+                  setCheered(true);
+                  setCheers((n) => n + 1);
+                }}
+                className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium shadow-sm transition-all max-[520px]:px-3 max-[520px]:py-1 max-[520px]:text-xs ${
+                  cheered
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-600"
+                    : "border-neutral-200 bg-white/90 text-neutral-600 hover:border-emerald-300 hover:text-emerald-600"
+                }`}
+              >
+                <span
+                  className={`text-base transition-transform duration-300 ${
+                    cheered ? "scale-125" : ""
+                  }`}
+                >
+                  👏
+                </span>
+                Tebrik et
+              </button>
+            </>
+          ) : (
+            <span className="relative">
+              {wished && (
+                <span className="pointer-events-none absolute left-1/2 top-1/2 z-10">
+                  {WISH_STARS.map((s, i) => (
+                    <span
+                      key={i}
+                      className="wish-star absolute left-0 top-0 leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]"
+                      style={
+                        {
+                          "--dx": `${s.dx}px`,
+                          "--dy": `${s.dy}px`,
+                          "--rot": `${s.rot}deg`,
+                          fontSize: s.size,
+                          animationDelay: `${s.delay}ms`,
+                        } as CSSProperties
+                      }
+                    >
+                      {s.emoji}
+                    </span>
+                  ))}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (testMode) {
+                    // Test modu: sınırsız, +10'ar — barajlar hızla denenir
+                    setWished(true);
+                    setLuck((n) => n + 10);
+                    onWish?.(10);
+                    return;
+                  }
+                  if (wished) return;
+                  setWished(true);
+                  setLuck((n) => n + 1);
+                  onWish?.(1);
+                }}
+                className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium shadow-sm transition-all max-[520px]:px-3 max-[520px]:py-1 max-[520px]:text-xs ${
+                  wished
+                    ? "wish-yay border-amber-300 bg-amber-50 text-amber-600"
+                    : "wish-btn border-neutral-200 bg-white/90 text-neutral-600 hover:border-amber-300 hover:text-amber-600"
+                }`}
+              >
+                <span
+                  className={`text-base transition-transform duration-300 ${
+                    wished ? "scale-125" : ""
+                  }`}
+                >
+                  {wished ? "⭐" : "☆"}
+                </span>
+                {testMode ? "Şans dile +10" : "Şans dile"}
+              </button>
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ManifestPopup({
   envelope,
   origin,
@@ -1141,6 +1031,9 @@ function ManifestPopup({
   const [wished, setWished] = useState(false);
   const [cheers, setCheers] = useState(envelope.cheers ?? 0);
   const [cheered, setCheered] = useState(false);
+  // Test modu (admin panelden): şans sınırsız ve +10'ar dilenir
+  const [testMode, setTestMode] = useState(false);
+  useEffect(() => setTestMode(localStorage.getItem(TEST_KEY) === "1"), []);
   // Kapak, mektup dışarıdayken arkada (1), mektup içerideyken önde (30) durur
   const [flapZ, setFlapZ] = useState(30);
   const closingRef = useRef(false);
@@ -1498,9 +1391,20 @@ function ManifestPopup({
                 <button
                   type="button"
                   onClick={() => {
+                    if (testMode) {
+                      // Test modu: sınırsız, +10'ar — üye manifestine
+                      // kalıcı yazılır, panel ödül akışları tetiklenir
+                      setWished(true);
+                      setLuck((n) => n + 10);
+                      envelope.luck += 10;
+                      persistLuck(envelope.code, 10);
+                      return;
+                    }
                     if (wished) return;
                     setWished(true);
                     setLuck((n) => n + 1);
+                    envelope.luck += 1;
+                    persistLuck(envelope.code, 1);
                   }}
                   className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium shadow-sm transition-all max-[520px]:px-3 max-[520px]:py-1 max-[520px]:text-xs ${
                     wished
@@ -1515,7 +1419,7 @@ function ManifestPopup({
                   >
                     {wished ? "⭐" : "☆"}
                   </span>
-                  Şans dile
+                  {testMode ? "Şans dile +10" : "Şans dile"}
                 </button>
               </span>
             )}
@@ -1632,6 +1536,9 @@ export default function Home() {
         }
         // Şişeye koyma (150+ hak) da üyenin onayıyla olur
         if (m.bottled) env.bottled = true;
+        // Hediye kutusu (250+ hak): kutudaki manifest zarf/şişe olarak
+        // görünmez, duvarın tepesindeki kutuda sergilenir
+        if (m.boxed) env.boxed = true;
         list.push(env);
       }
     }
@@ -1642,6 +1549,10 @@ export default function Home() {
     () => [...baseEnvelopes, ...memberEnvs],
     [baseEnvelopes, memberEnvs],
   );
+
+  // Reklam alanları — admin panelden açılıp kapatılır (localStorage bayrağı)
+  const [ads, setAds] = useState(false);
+  useEffect(() => setAds(localStorage.getItem(ADS_KEY) === "1"), []);
   const [selected, setSelected] = useState<{
     env: Envelope;
     origin: Origin;
@@ -1653,8 +1564,11 @@ export default function Home() {
     id: number;
     origin: Origin;
   } | null>(null);
-  // Hediye kutusu popup'ı (duvardaki kutunun uçuş başlangıç konumu)
-  const [giftOrigin, setGiftOrigin] = useState<Origin | null>(null);
+  // Hediye kutusu popup'ı (zarf id'si + uçuş başlangıç konumu)
+  const [giftOpen, setGiftOpen] = useState<{
+    id: number;
+    origin: Origin;
+  } | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
 
   // Ekran genişliği + cihaz tipine göre sütun sayısı:
@@ -1691,16 +1605,37 @@ export default function Home() {
       envelopes.filter(
         (e) =>
           !e.bottled &&
+          !e.boxed &&
           (!fYear || e.year === fYear) &&
           (!fMonth || e.month === fMonth),
       ),
     [envelopes, fYear, fMonth],
   );
 
-  // Şişedeki manifestler (150+ şans)
+  // Şişedeki manifestler (150+ şans) — kutuya taşınanlar şişeden çıkar,
+  // yıl/ay filtresi zarflarla aynı şekilde şişelere de uygulanır
   const bottledEnvs = useMemo(
-    () => envelopes.filter((e) => e.bottled),
-    [envelopes],
+    () =>
+      envelopes.filter(
+        (e) =>
+          e.bottled &&
+          !e.boxed &&
+          (!fYear || e.year === fYear) &&
+          (!fMonth || e.month === fMonth),
+      ),
+    [envelopes, fYear, fMonth],
+  );
+
+  // Hediye kutusundaki manifestler (250+ şans) — aynı filtre kuralları
+  const boxedEnvs = useMemo(
+    () =>
+      envelopes.filter(
+        (e) =>
+          e.boxed &&
+          (!fYear || e.year === fYear) &&
+          (!fMonth || e.month === fMonth),
+      ),
+    [envelopes, fYear, fMonth],
   );
 
   // Günlük karıştırma tohumu: her gece 02:00'da değişir. Sıralama satılmaz;
@@ -1738,7 +1673,7 @@ export default function Home() {
     const bannerGap = 14;
     const bannerH = Math.max(110, m.envH * 1.35);
     const stacked = cols === 3;
-    const banners = !ADS_ENABLED
+    const banners = !ads
       ? []
       : stacked
         ? [
@@ -1820,28 +1755,41 @@ export default function Home() {
       rot: -18 + bRand() * 36,
     }));
 
-    // Hediye kutusu bölgesi (duvar üstü, ortada; 10° dönüşün bbox'ı + pay).
-    // Şişeler bu bölgeye giremez: çakışan şişe kutunun yanına, dar ekranda
-    // altına taşınır — kutuyla şişe üst üste binip fiziği bozmasın
-    // Korunan bölge kutu boyutundan türetilir (10° dönüş bbox'ı + pay)
+    // Hediye kutuları — şişeler gibi günlük seed'le duvara serpilir
+    // (bbox, hafif dönüş payıyla kutu boyutundan türetilir)
+    const gRand = mulberry32(daySeed + 1717);
     const giftW = Math.round(m.giftSize * 1.27);
     const giftH = Math.round(m.giftSize * 1.55);
-    const gcx = wrapperW / 2;
-    const gcy = 150 + Math.round(m.giftSize * 0.66);
+    const gifts = boxedEnvs.map((env, i) => ({
+      env,
+      x: gRand() * Math.max(1, wrapperW - giftW - 8),
+      y:
+        topOffset +
+        ((i + 0.15 + gRand() * 0.7) / Math.max(1, boxedEnvs.length)) *
+          Math.max(1, sectionH - topOffset - giftH - 120),
+      rot: -12 + gRand() * 24,
+    }));
+
+    // Şişe kutuya binmesin: çakışan şişe kutunun yanına, sığmazsa altına
+    // taşınır — kutuyla şişe üst üste binip fiziği bozmasın
     for (const bb of bottles) {
-      const margin = 30;
-      const overlapX =
-        bb.x < gcx + giftW / 2 + margin &&
-        bb.x + m.bottleW > gcx - giftW / 2 - margin;
-      const overlapY =
-        bb.y < gcy + giftH / 2 + margin &&
-        bb.y + m.bottleH > gcy - giftH / 2 - margin;
-      if (!(overlapX && overlapY)) continue;
-      const leftX = gcx - giftW / 2 - m.bottleW - margin;
-      const rightX = gcx + giftW / 2 + margin;
-      const cand = bb.x + m.bottleW / 2 < gcx ? leftX : rightX;
-      if (cand >= 0 && cand <= wrapperW - m.bottleW) bb.x = cand;
-      else bb.y = gcy + giftH / 2 + margin;
+      for (const g of gifts) {
+        const margin = 30;
+        const gcx = g.x + giftW / 2;
+        const gcy = g.y + giftH / 2;
+        const overlapX =
+          bb.x < gcx + giftW / 2 + margin &&
+          bb.x + m.bottleW > gcx - giftW / 2 - margin;
+        const overlapY =
+          bb.y < gcy + giftH / 2 + margin &&
+          bb.y + m.bottleH > gcy - giftH / 2 - margin;
+        if (!(overlapX && overlapY)) continue;
+        const leftX = gcx - giftW / 2 - m.bottleW - margin;
+        const rightX = gcx + giftW / 2 + margin;
+        const cand = bb.x + m.bottleW / 2 < gcx ? leftX : rightX;
+        if (cand >= 0 && cand <= wrapperW - m.bottleW) bb.x = cand;
+        else bb.y = gcy + giftH / 2 + margin;
+      }
     }
 
     const rx = m.bottleW / 2 + m.envW / 2 + 8;
@@ -1866,18 +1814,19 @@ export default function Home() {
         p.x += dx * push;
         p.y += dy * push;
       }
-      {
+      for (const g of gifts) {
+        const gcx = g.x + giftW / 2;
+        const gcy = g.y + giftH / 2;
         let dx = ex - gcx;
         let dy = ey - gcy;
         const d = Math.hypot(dx / grx, dy / gry);
-        if (d < 1) {
-          const len = Math.hypot(dx, dy) || 1;
-          dx /= len;
-          dy /= len;
-          const push = (1 - d) * m.envW * 0.34; // kutu az ezsin, biraz rahatla
-          p.x += dx * push;
-          p.y += dy * push;
-        }
+        if (d >= 1) continue;
+        const len = Math.hypot(dx, dy) || 1;
+        dx /= len;
+        dy /= len;
+        const push = (1 - d) * m.envW * 0.34; // kutu az ezsin, biraz rahatla
+        p.x += dx * push;
+        p.y += dy * push;
       }
       // Kenarlarda simetrik hafif taşmaya izin ver (iki taraf da dolu dursun)
       p.x = Math.min(wrapperW - m.envW + 8, Math.max(-8, p.x));
@@ -1892,10 +1841,12 @@ export default function Home() {
       topOffset,
       pos,
       bottles,
+      gifts,
+      giftW,
       banners,
       order,
     };
-  }, [visible, bottledEnvs, cols, vwPx, daySeed]);
+  }, [visible, bottledEnvs, boxedEnvs, cols, vwPx, daySeed, ads]);
 
   // Pencereleme: sadece görünür bölge ± tampon kadar satır render edilir,
   // 1000 zarfın tamamı asla aynı anda DOM'da durmaz
@@ -1940,7 +1891,14 @@ export default function Home() {
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Kodu bul, konumuna kaydır ve zarfı parlat — arama formu ve panelden
+  // Bulunan öğeyi (zarf/şişe/kutu) parlat + salla, 4 sn sonra söndür
+  const flashItem = (id: number) => {
+    setHighlightId(id);
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    highlightTimer.current = setTimeout(() => setHighlightId(null), 4000);
+  };
+
+  // Kodu bul, konumuna kaydır ve parlat — arama formu ve panelden
   // "Duvara As" yönlendirmesi (?kod=) ortak kullanır
   const jumpToCode = (raw: string) => {
     const q = raw.trim().toUpperCase().replace(/[\s-]/g, "");
@@ -1956,7 +1914,24 @@ export default function Home() {
       setTimeout(() => setSearchErr(false), 1200);
       return;
     }
-    // Şişedeki manifest arandıysa şişenin konumuna kaydır
+    // Kutudaki manifest arandıysa kutunun konumuna kaydır ve parlat
+    if (env.boxed) {
+      const ge = layout.gifts.find((g) => g.env.id === env.id);
+      const sec = sectionRef.current;
+      if (ge && sec) {
+        window.scrollTo({
+          top: sec.offsetTop + ge.y - window.innerHeight / 2 + 120,
+          behavior: "smooth",
+        });
+        flashItem(env.id);
+      } else {
+        // Kutu aktif yıl/ay filtresinin dışında
+        setSearchErr(true);
+        setTimeout(() => setSearchErr(false), 1200);
+      }
+      return;
+    }
+    // Şişedeki manifest arandıysa şişenin konumuna kaydır ve parlat
     if (env.bottled) {
       const be = layout.bottles.find((b) => b.env.id === env.id);
       const sec = sectionRef.current;
@@ -1965,6 +1940,11 @@ export default function Home() {
           top: sec.offsetTop + be.y - window.innerHeight / 2 + 120,
           behavior: "smooth",
         });
+        flashItem(env.id);
+      } else {
+        // Şişe aktif yıl/ay filtresinin dışında
+        setSearchErr(true);
+        setTimeout(() => setSearchErr(false), 1200);
       }
       return;
     }
@@ -1975,7 +1955,7 @@ export default function Home() {
       setTimeout(() => setSearchErr(false), 1200);
       return;
     }
-    setHighlightId(env.id);
+    flashItem(env.id);
     // Hedef zarf henüz render edilmemiş olabilir (pencereleme) — konumu
     // matematiksel hesapla; kaydırınca görünür alana girip parlar
     const sec = sectionRef.current;
@@ -1986,8 +1966,6 @@ export default function Home() {
         behavior: "smooth",
       });
     }
-    if (highlightTimer.current) clearTimeout(highlightTimer.current);
-    highlightTimer.current = setTimeout(() => setHighlightId(null), 4000);
   };
 
   const handleSearch = (e: React.FormEvent) => {
@@ -2044,7 +2022,7 @@ export default function Home() {
   // Popup açıkken sayfa kaymasın; kaybolan scrollbar kadar padding ekle ki
   // duvar yana kaymasın (yoksa zarf yerine dönerken hedef şaşar)
   useEffect(() => {
-    if (selected || bottleOpen || giftOrigin) {
+    if (selected || bottleOpen || giftOpen) {
       const sbw = window.innerWidth - document.documentElement.clientWidth;
       document.body.style.overflow = "hidden";
       document.body.style.paddingRight = `${sbw}px`;
@@ -2056,12 +2034,12 @@ export default function Home() {
       document.body.style.overflow = "";
       document.body.style.paddingRight = "";
     };
-  }, [selected, bottleOpen, giftOrigin]);
+  }, [selected, bottleOpen, giftOpen]);
 
   return (
     <main className="flex min-h-screen flex-col">
-      {/* Topbar reklam alanı — şerit (admin: reklamlar kapalı) */}
-      {ADS_ENABLED && (
+      {/* Topbar reklam alanı — şerit (admin panelden açılıp kapatılır) */}
+      {ads && (
         <div className="flex h-12 shrink-0 items-center justify-center border-b border-neutral-200 bg-white">
           <span className="rounded border border-dashed border-neutral-300 px-8 py-1 text-[11px] font-medium uppercase tracking-[0.3em] text-neutral-400">
             Topbar Reklam Alanı
@@ -2151,43 +2129,58 @@ export default function Home() {
           className="relative mx-auto h-full"
           style={{ width: layout.wrapperW }}
         >
-          {/* Manifest Kutusu — 250+ şans dilenen manifest, duvarın üstünde
-              tepeden görünen kurdeleli hediye kutusunda sergilenir */}
-          <div
-            className="absolute left-1/2 -translate-x-1/2"
-            style={{
-              top: 150,
-              zIndex: 1400,
-              visibility: giftOrigin ? "hidden" : "visible",
-            }}
-          >
-            <button
-              type="button"
-              aria-label={`${GIFT_ENV.name} — hediye kutusundaki manifesti oku`}
-              className="block cursor-pointer touch-manipulation transition-transform duration-200 hover:scale-110"
-              onClick={(e) => {
-                const el = e.currentTarget;
-                const r = el.getBoundingClientRect();
-                // Genişlik döndürülmemiş halinden alınır (bbox açıyla büyür)
-                setGiftOrigin({
-                  cx: r.left + r.width / 2,
-                  cy: r.top + r.height / 2,
-                  w: el.offsetWidth,
-                  h: el.offsetHeight,
-                });
+          {/* Hediye Kutuları — 250+ şans dilenmiş manifestler, şişeler gibi
+              duvara serpilmiş kurdeleli kutularda sergilenir */}
+          {layout.gifts.map((g) => (
+            <div
+              key={g.env.id}
+              className="absolute"
+              style={{
+                left: g.x,
+                top: g.y,
+                zIndex:
+                  highlightId === g.env.id ? 1460 : layout.rows * 4 + 40,
+                visibility:
+                  giftOpen?.id === g.env.id ? "hidden" : "visible",
               }}
             >
-              {/* Duvarda hafif açıyla durur — popup uçuşu da bu açıdan başlar */}
-              <div style={{ transform: "rotate(10deg)" }}>
-                <GiftBoxVisual
-                  size={layout.giftSize}
-                  name={GIFT_ENV.name}
-                  luck={GIFT_ENV.luck}
-                  glow
-                />
-              </div>
-            </button>
-          </div>
+              <button
+                type="button"
+                aria-label={`${g.env.name} — hediye kutusundaki manifesti oku`}
+                className={`block cursor-pointer touch-manipulation transition-transform duration-200 hover:scale-110 ${
+                  highlightId === g.env.id ? "item-flash" : ""
+                }`}
+                onClick={(e) => {
+                  const el = e.currentTarget;
+                  const r = el.getBoundingClientRect();
+                  // Genişlik döndürülmemiş halinden alınır (bbox açıyla büyür)
+                  setGiftOpen({
+                    id: g.env.id,
+                    origin: {
+                      cx: r.left + r.width / 2,
+                      cy: r.top + r.height / 2,
+                      w: el.offsetWidth,
+                      h: el.offsetHeight,
+                    },
+                  });
+                }}
+              >
+                {/* Duvarda hafif açıyla durur — popup uçuşu bu açıdan başlar */}
+                <div style={{ transform: `rotate(${g.rot}deg)` }}>
+                  <GiftBoxVisual
+                    size={layout.giftSize}
+                    name={g.env.name}
+                    luck={g.env.luck}
+                    sticker={g.env.sticker?.emoji}
+                    stickerRot={g.env.sticker?.rotation}
+                    realized={g.env.realized}
+                    cheers={g.env.cheers}
+                    glow
+                  />
+                </div>
+              </button>
+            </div>
+          ))}
 
           {/* Reklam banner alanları — placeholder */}
           {layout.banners.map((bn, i) => (
@@ -2227,9 +2220,11 @@ export default function Home() {
                   },
                 });
               }}
-              className="absolute aspect-[200/520] cursor-pointer touch-manipulation transition-all duration-200 hover:scale-110"
+              className={`absolute aspect-[200/520] cursor-pointer touch-manipulation transition-all duration-200 hover:scale-110 ${
+                highlightId === b.env.id ? "item-flash" : ""
+              }`}
               style={{
-                zIndex: layout.rows * 4 + 40,
+                zIndex: highlightId === b.env.id ? 1460 : layout.rows * 4 + 40,
                 width: layout.bottleW,
                 left: b.x,
                 top: b.y,
@@ -2320,13 +2315,32 @@ export default function Home() {
               bottle={toBottleData(be.env, be.rot)}
               origin={bottleOpen.origin}
               onClose={() => setBottleOpen(null)}
+              onWish={(d) => {
+                be.env.luck += d;
+                persistLuck(be.env.code, d);
+              }}
             />
           ) : null;
         })()}
 
-      {giftOrigin && (
-        <GiftPopup origin={giftOrigin} onClose={() => setGiftOrigin(null)} />
-      )}
+      {giftOpen &&
+        (() => {
+          const ge = layout.gifts.find((g) => g.env.id === giftOpen.id);
+          return ge ? (
+            <GiftPopup
+              gift={toGiftData(ge.env)}
+              rot={ge.rot}
+              sticker={ge.env.sticker?.emoji}
+              stickerRot={ge.env.sticker?.rotation}
+              origin={giftOpen.origin}
+              onClose={() => setGiftOpen(null)}
+              onWish={(d) => {
+                ge.env.luck += d;
+                persistLuck(ge.env.code, d);
+              }}
+            />
+          ) : null;
+        })()}
 
       {selected && (
         <ManifestPopup

@@ -16,6 +16,7 @@ export type MemberManifest = {
   sticker?: string; // 20+ şans hakkı: üyenin seçtiği süs emojisi
   special?: number; // 50+ şans hakkı: seçilen özel renk (SPECIAL_COLORS idx)
   bottled?: boolean; // 150+ şans hakkı: üye onayıyla manifest şişeye konur
+  boxed?: boolean; // 250+ şans hakkı: üye onayıyla manifest hediye kutusuna taşınır
   realized: boolean;
   realizedDate?: string;
 };
@@ -206,14 +207,16 @@ export function saveUser(user: User) {
   write(USERS_KEY, users);
 }
 
-// Hesabı kalıcı siler: üyelik, manifestler ve oturum birlikte gider
+// Hesabı kalıcı siler: üyelik, manifestler ve oturum birlikte gider.
+// Oturum yalnızca silinen hesaba aitse kapatılır (admin başka üyeyi
+// sildiğinde ziyaretçinin oturumu düşmesin)
 export function deleteUser(id: string) {
   write(
     USERS_KEY,
     getUsers().filter((u) => u.id !== id),
   );
   if (id === "u-test") write("mw_test_deleted", true);
-  endSession();
+  if (read<string | null>(SESSION_KEY, null) === id) endSession();
 }
 
 export function findUser(email: string): User | undefined {

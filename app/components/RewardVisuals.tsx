@@ -443,6 +443,8 @@ export function GiftBoxVisual({
   glow = false,
   realized = false,
   cheers = 0,
+  sticker,
+  stickerRot = -10,
 }: {
   size: number;
   name: string;
@@ -451,9 +453,12 @@ export function GiftBoxVisual({
   depth?: boolean;
   // Kapak arasından sızan ışık — duvardaki kapalı kutuda yanar
   glow?: boolean;
-  // Gerçekleşen manifestte etikete 👏 sütunu eklenir (şişeyle aynı format)
+  // Gerçekleşen manifestte yeşil etiket + etikete 👏 sütunu (şişeyle aynı)
   realized?: boolean;
   cheers?: number;
+  // Üyenin seçtiği süs — zarftaki gibi kapak üstüne yapıştırılır
+  sticker?: string;
+  stickerRot?: number; // deg
 }) {
   const u = size / 150;
   const h = size * 1.32;
@@ -594,6 +599,38 @@ export function GiftBoxVisual({
         />
         <circle cx="50" cy="45" r="6.5" fill="url(#giftBowGrad)" />
       </svg>
+      {/* Süs — zarftaki gibi kapak üstüne yapıştırılır; fiyonk ve kurdele
+          dışındaki sol alt boş alanda durur */}
+      {sticker && (
+        <span
+          className="pointer-events-none absolute z-10 leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]"
+          style={{
+            left: "19%",
+            top: "64%",
+            fontSize: 26 * u,
+            transform: `translate(-50%, -50%) rotate(${stickerRot}deg)`,
+          }}
+        >
+          {sticker}
+        </span>
+      )}
+      {/* Gerçekleşti etiketi — zarftaki yeşil pill'in kutu üstü hali;
+          kağıt etikete çarpmasın diye sol-alt bölgede durur */}
+      {realized && (
+        <span
+          className="absolute z-10 whitespace-nowrap rounded-full bg-emerald-500 font-bold uppercase text-white shadow-md"
+          style={{
+            left: "30%",
+            top: "82%",
+            transform: "translate(-50%, -50%) rotate(-5deg)",
+            fontSize: Math.max(7.5, 9 * u),
+            letterSpacing: "0.1em",
+            padding: `${2.5 * u}px ${8 * u}px`,
+          }}
+        >
+          Gerçekleşti
+        </span>
+      )}
       {/* Kağıt etiket — şişelerdeki bantla aynı dil: ⭐ beğeni + rumuz.
           Kutuya göre dikine durur (90° dönük), sağ tarafta kurdelesiz alanda */}
       <div

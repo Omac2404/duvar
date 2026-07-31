@@ -99,6 +99,7 @@ function ManifestCard({
   onPickSticker,
   onPickSpecial,
   onBottle,
+  onBox,
 }: {
   m: MemberManifest;
   onRealized: () => void;
@@ -106,6 +107,7 @@ function ManifestCard({
   onPickSticker: () => void;
   onPickSpecial: () => void;
   onBottle: () => void;
+  onBox: () => void;
 }) {
   const c = PANEL_COLORS[m.colorIdx % PANEL_COLORS.length];
   // Özel renk seçildiyse kart şeridi ve rozet o renge döner
@@ -133,13 +135,21 @@ function ManifestCard({
               {m.sticker}
             </span>
           )}
-          {/* Şişede sergileniyor rozeti */}
-          {m.bottled && (
+          {/* Şişede sergileniyor rozeti — kutuya taşındıysa kutu rozeti */}
+          {m.bottled && !m.boxed && (
             <span
               className="rounded-full bg-sky-100 px-2.5 py-0.5 text-[11px] font-semibold text-sky-700"
               title="Manifest duvarda şişede sergileniyor"
             >
               🍾 Şişede
+            </span>
+          )}
+          {m.boxed && (
+            <span
+              className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700"
+              title="Manifest duvarın tepesindeki hediye kutusunda sergileniyor"
+            >
+              🎁 Kutuda
             </span>
           )}
           {/* Seçilen özel renk rozeti */}
@@ -204,13 +214,27 @@ function ManifestCard({
               </button>
             )}
             {/* 150+ şans: şişe hakkı kazanıldı, üye onayıyla şişeye konur */}
-            {m.luck >= 150 && !m.bottled && (
+            {m.luck >= 150 && !m.bottled && !m.boxed && (
               <button
                 type="button"
                 onClick={onBottle}
                 className="bottle-pulse cursor-pointer rounded-full bg-[#4c8ba1] px-3 py-1 font-semibold text-white transition-colors hover:bg-[#3f7a8f]"
               >
                 🍾 Şişeye Koy
+              </button>
+            )}
+            {/* 250+ şans: hediye kutusu hakkı kazanıldı, üye onayıyla
+                duvarın tepesindeki kurdeleli kutuya taşınır */}
+            {m.luck >= 250 && !m.boxed && (
+              <button
+                type="button"
+                onClick={onBox}
+                className="gift-pulse cursor-pointer rounded-full px-3 py-1 font-semibold text-white transition-opacity hover:opacity-90"
+                style={{
+                  background: "linear-gradient(135deg, #d4a94f, #a97e2c)",
+                }}
+              >
+                🎁 Kutuya Koy
               </button>
             )}
             {!m.realized && (
@@ -290,6 +314,8 @@ export default function PanelPage() {
   const [pendingBottle, setPendingBottle] = useState<MemberManifest | null>(
     null,
   );
+  // Hediye kutusuna koyma onayı (250+ şans hakkı) — önizleme + onay
+  const [pendingBox, setPendingBox] = useState<MemberManifest | null>(null);
 
   // Ayarlar
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -374,6 +400,15 @@ export default function PanelPage() {
       if (m) m.bottled = true;
     });
     setPendingBottle(null);
+  }
+
+  // Manifesti hediye kutusuna taşır — duvarın tepesindeki kutuda sergilenir
+  function setBoxed(code: string) {
+    update((u) => {
+      const m = u.manifests.find((x) => x.code === code);
+      if (m) m.boxed = true;
+    });
+    setPendingBox(null);
   }
 
   function markRealized(code: string) {
@@ -657,6 +692,7 @@ export default function PanelPage() {
                   onPickSticker={() => setPickFor(m)}
                   onPickSpecial={() => setPickColorFor(m)}
                   onBottle={() => setPendingBottle(m)}
+                  onBox={() => setPendingBox(m)}
                 />
               ))}
             </div>
@@ -768,6 +804,7 @@ export default function PanelPage() {
                           size={158}
                           name={pName}
                           luck={pLuck}
+                          sticker="✈️"
                           glow
                         />
                       </div>
@@ -776,6 +813,50 @@ export default function PanelPage() {
                   <p className="mt-3 text-xs leading-relaxed text-neutral-500">
                     {s.desc}
                   </p>
+                  {/* Manifest ilerlemeleri — her manifest kod olarak, bu
+                      etabın barajına göre bar ile gösterilir */}
+                  {user.manifests.length > 0 && (
+                    <div className="mt-3 space-y-2 border-t border-neutral-100 pt-3">
+                      {[...user.manifests]
+                        .sort((a, b) => b.luck - a.luck)
+                        .map((m) => {
+                          const pct = Math.min(
+                            100,
+                            Math.round((m.luck / s.threshold) * 100),
+                          );
+                          const done = m.luck >= s.threshold;
+                          return (
+                            <div
+                              key={m.code}
+                              className="flex items-center gap-2.5"
+                              title={`${m.name} — ⭐ ${m.luck.toLocaleString("tr-TR")} / baraj ${s.threshold}`}
+                            >
+                              <span className="w-[72px] shrink-0 font-mono text-[11px] font-bold text-sky-700">
+                                {m.code}
+                              </span>
+                              <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-100">
+                                <div
+                                  className={`h-full rounded-full transition-[width] duration-500 ${
+                                    done
+                                      ? "bg-emerald-400"
+                                      : "bg-gradient-to-r from-amber-300 to-amber-400"
+                                  }`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                              <span
+                                className={`w-[84px] shrink-0 text-right text-[11px] font-semibold tabular-nums ${
+                                  done ? "text-emerald-600" : "text-neutral-400"
+                                }`}
+                              >
+                                {done ? "✓ " : ""}
+                                {m.luck.toLocaleString("tr-TR")}/{s.threshold}
+                              </span>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
                 </article>
               );
             })}
@@ -1249,6 +1330,69 @@ export default function PanelPage() {
                   className="flex-1 cursor-pointer rounded-xl bg-[#4c8ba1] py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#3f7a8f]"
                 >
                   Onayla 🍾
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Hediye kutusuna koyma onayı — kutu önizlemesi + geri alınamaz ── */}
+        {pendingBox && (
+          <div
+            className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/40 px-4"
+            onClick={() => setPendingBox(null)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3
+                className="text-2xl font-bold text-neutral-800"
+                style={{ fontFamily: "var(--font-caveat)" }}
+              >
+                Hediye Kutusuna Koy 🎁
+              </h3>
+              <p className="mt-0.5 text-xs leading-relaxed text-neutral-400">
+                <b className="text-neutral-600">{pendingBox.code}</b> kodlu
+                manifestin 250 şans barajını geçti. Duvarın tepesinde böyle
+                sergilenecek:
+              </p>
+              {/* Kutu önizlemesi — duvardaki kurdeleli kutunun birebir görseli */}
+              <div className="mt-3 flex items-center justify-center rounded-xl bg-[#f1efe9] py-6">
+                <div className="pr-9">
+                  <GiftBoxVisual
+                    size={150}
+                    name={pendingBox.name}
+                    luck={pendingBox.luck}
+                    sticker={pendingBox.sticker}
+                    realized={pendingBox.realized}
+                    cheers={pendingBox.cheers}
+                    glow
+                  />
+                </div>
+              </div>
+              <p className="mt-3 text-sm leading-relaxed text-neutral-500">
+                Manifest {pendingBox.bottled ? "şişeden çıkıp" : "zarftan çıkıp"}{" "}
+                duvarın tepesindeki kurdeleli hediye kutusunda sergilenecek.{" "}
+                <b className="text-red-500">Bu işlem geri alınamaz.</b>
+              </p>
+              <div className="mt-5 flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setPendingBox(null)}
+                  className="flex-1 cursor-pointer rounded-xl border border-neutral-200 py-2.5 text-sm font-medium text-neutral-500 transition-colors hover:bg-neutral-50"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBoxed(pendingBox.code)}
+                  className="flex-1 cursor-pointer rounded-xl py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                  style={{
+                    background: "linear-gradient(135deg, #d4a94f, #a97e2c)",
+                  }}
+                >
+                  Onayla 🎁
                 </button>
               </div>
             </div>
