@@ -20,9 +20,12 @@ import {
 } from "./components/RewardVisuals";
 import {
   ADS_KEY,
+  addReport,
   buildEnvelopes,
+  isReported,
   MEMBER_ID_BASE,
   mulberry32,
+  REPORT_REASONS,
   SPECIALS,
   TEST_KEY,
   type Envelope,
@@ -261,7 +264,7 @@ function BottlePopup({
         {/* Not — yatık şişenin ağzından kıvrılarak çıkar, ekranın ortasında
             açılır. Kağıt, zarftan çıkan mektupla aynı biçim ve genişlikte */}
         <div
-          className="absolute left-1/2 top-[46%] z-30 w-[min(79vw,396px)]"
+          className="absolute left-1/2 top-[46%] z-30 w-[min(92vw,460px)]"
           style={{
             transformOrigin: "center center",
             transform:
@@ -276,12 +279,22 @@ function BottlePopup({
           }}
         >
           <LetterCard info={bottle} onWish={onWish} />
+          {/* Mobil kapat — mektubun dışında, sağ üst köşesinde */}
+          <button
+            type="button"
+            onClick={close}
+            aria-label="Kapat"
+            className="absolute -top-11 right-0 z-40 hidden h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white text-lg text-neutral-600 shadow-lg max-[520px]:flex"
+            style={{ opacity: notePhase === "open" ? 1 : 0 }}
+          >
+            ×
+          </button>
         </div>
 
         <button
           type="button"
           onClick={close}
-          className="absolute -right-14 top-[10%] z-40 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white text-xl text-neutral-600 shadow-lg transition-all hover:scale-110"
+          className="absolute -right-14 top-[10%] z-40 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white text-xl text-neutral-600 shadow-lg transition-all hover:scale-110 max-[520px]:hidden"
           style={{ opacity: stage === "open" ? 1 : 0 }}
           aria-label="Kapat"
         >
@@ -601,9 +614,9 @@ function GiftPopup({
           />
 
           {/* Mektup kağıdı — kutunun içinden yükselir; zarftan çıkan
-              mektupla aynı biçim ve genişlikte */}
+              mektupla aynı biçimde, zarf popup'ı genişliğinde */}
           <div
-            className="absolute left-1/2 z-10 w-[min(79vw,396px)]"
+            className="absolute left-1/2 z-10 w-[min(92vw,460px)]"
             style={{
               bottom: 40 * geo.k,
               transformOrigin: "bottom center",
@@ -617,6 +630,16 @@ function GiftPopup({
             }}
           >
             <LetterCard info={gift} onWish={onWish} />
+            {/* Mobil kapat — mektubun dışında, sağ üst köşesinde */}
+            <button
+              type="button"
+              onClick={close}
+              aria-label="Kapat"
+              className="absolute -top-11 right-0 z-40 hidden h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white text-lg text-neutral-600 shadow-lg max-[520px]:flex"
+              style={{ opacity: stage === "open" ? 1 : 0 }}
+            >
+              ×
+            </button>
           </div>
 
           {/* Gövde katmanları kapakla (GiftBoxVisual) aynı birimi kullanır:
@@ -764,7 +787,7 @@ function GiftPopup({
             type="button"
             onClick={close}
             aria-label="Kapat"
-            className="absolute -right-2 z-40 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white text-xl text-neutral-600 shadow-lg transition-all hover:scale-110 max-[520px]:h-8 max-[520px]:w-8 max-[520px]:text-base"
+            className="absolute -right-2 z-40 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white text-xl text-neutral-600 shadow-lg transition-all hover:scale-110 max-[520px]:hidden"
             style={{ top: 120 * geo.k, opacity: atCenter ? 1 : 0 }}
           >
             ×
@@ -797,8 +820,156 @@ const WISH_STARS: {
   { dx: -8, dy: 48, rot: -10, size: 11, delay: 70, emoji: "⭐" },
 ];
 
+// Tebrik et — basınca saçılan alkış/konfeti (şans yıldızlarıyla aynı düzen)
+const CHEER_STARS: typeof WISH_STARS = [
+  { dx: -54, dy: -36, rot: -40, size: 14, delay: 0, emoji: "👏" },
+  { dx: 46, dy: -50, rot: 30, size: 11, delay: 40, emoji: "🎉" },
+  { dx: -20, dy: -60, rot: -15, size: 12, delay: 80, emoji: "👏" },
+  { dx: 62, dy: -14, rot: 45, size: 13, delay: 20, emoji: "🎉" },
+  { dx: -64, dy: 6, rot: -30, size: 11, delay: 60, emoji: "🎊" },
+  { dx: 28, dy: 36, rot: 20, size: 12, delay: 100, emoji: "👏" },
+  { dx: -40, dy: 32, rot: -25, size: 10, delay: 50, emoji: "🎉" },
+  { dx: 8, dy: -68, rot: 10, size: 15, delay: 0, emoji: "👏" },
+  { dx: 68, dy: 24, rot: 35, size: 10, delay: 90, emoji: "🎊" },
+  { dx: -8, dy: 48, rot: -10, size: 11, delay: 70, emoji: "🎉" },
+];
+
+// Basınca buton etrafına saçılan emoji demeti — şans ve tebrikte ortak
+function BurstStars({ stars }: { stars: typeof WISH_STARS }) {
+  return (
+    <span className="pointer-events-none absolute left-1/2 top-1/2 z-10">
+      {stars.map((s, i) => (
+        <span
+          key={i}
+          className="wish-star absolute left-0 top-0 leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]"
+          style={
+            {
+              "--dx": `${s.dx}px`,
+              "--dy": `${s.dy}px`,
+              "--rot": `${s.rot}deg`,
+              fontSize: s.size,
+              animationDelay: `${s.delay}ms`,
+            } as CSSProperties
+          }
+        >
+          {s.emoji}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+// ── Bildir — manifesti şikâyet etme akışı ────────────────────────────────
+// Butona basınca 4 sebep pill'i yukarı fışkırır; seçilen sebep localStorage'a
+// yazılır ve admin paneldeki "Bildirilenler" sekmesine düşer
+function ReportButton({
+  code,
+  name,
+  manifest,
+  below = false,
+}: {
+  code: string;
+  name: string;
+  manifest: string;
+  // true: seçenekler butonun (zarfın) altında yatay sırada açılır (ss66);
+  // false: butonun üstünde dikey sırada (mektup kağıdı içinde)
+  below?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reported, setReported] = useState(false);
+  useEffect(() => setReported(isReported(code)), [code]);
+
+  if (reported)
+    return (
+      <span className="pointer-events-auto mt-0.5 flex items-center gap-1.5 opacity-70">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-4 w-4"
+        >
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+        Bildirildi
+      </span>
+    );
+
+  const pills = REPORT_REASONS.map((r, i) => (
+    <button
+      key={r}
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        const now = new Date();
+        addReport({
+          code,
+          name,
+          manifest,
+          reason: r,
+          ts: now.getTime(),
+          date: now.toLocaleDateString("tr-TR", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          }),
+        });
+        setReported(true);
+        setOpen(false);
+      }}
+      className="report-pop cursor-pointer whitespace-nowrap rounded-full border border-neutral-200 bg-white/95 px-2.5 py-1 text-[10px] font-medium text-neutral-600 shadow-sm transition-colors hover:border-red-300 hover:text-red-500"
+      style={{ animationDelay: `${i * 45}ms` }}
+    >
+      {r}
+    </button>
+  ));
+
+  return (
+    <span className="pointer-events-auto relative mt-0.5 flex flex-wrap items-center gap-1.5">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        className="flex cursor-pointer items-center gap-1.5 opacity-70 transition-opacity hover:opacity-100"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-4 w-4"
+        >
+          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+          <line x1="4" x2="4" y1="22" y2="15" />
+        </svg>
+        Bildir
+      </button>
+      {/* Zarf popup'ında zarfın altında yatay sıra (ss66); mektup kağıdında
+          butonun üstünde kompakt 2×2 ızgara — dar sütunda satır düzenini
+          bozmadan, kaydırma alanının içinde kalır */}
+      {open && below && (
+        <span className="absolute left-0 top-full z-20 mt-6 flex items-center gap-1.5">
+          {pills}
+        </span>
+      )}
+      {open && !below && (
+        <span className="absolute bottom-full left-0 z-20 mb-1.5 grid w-max grid-cols-2 gap-1.5">
+          {pills}
+        </span>
+      )}
+    </span>
+  );
+}
+
 // ── Ortak mektup kağıdı — şişeden ve kutudan çıkan kağıtların tek biçimi ──
-// Zarftan çıkan mektupla aynı format ve genişlik: rumuz + kod + metin;
+// Zarftan çıkan mektupla aynı format, genişlik zarf popup'ı kadar: rumuz +
+// kod + metin;
 // yazının sonunda zarf ön yüzündeki dizilimin aynısı — solda tarihler ve
 // görüntülenme, sağda şans sayısı + şans dile (gerçekleşende tebrik akışı)
 type LetterInfo = {
@@ -833,14 +1004,16 @@ function LetterCard({
       <p className="font-hand text-[26px] text-neutral-800 max-[520px]:text-[22px]">
         {info.name}
       </p>
-      <div className="mt-1 flex items-center justify-between">
-        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-neutral-400 max-[520px]:text-[9.5px]">
-          Manifest
-        </p>
-        <p className="flex items-center gap-1.5 font-mono text-[11px] tracking-wider text-neutral-400 max-[520px]:text-[9.5px]">
-          {info.code}
-          <CopyBtn text={info.code} />
-        </p>
+      <div className="mt-1 flex items-center justify-end">
+        <div className="flex flex-col items-end">
+          <span className="text-[9px] font-medium uppercase tracking-[0.2em] text-neutral-400 max-[520px]:text-[8px]">
+            Zarf kodu
+          </span>
+          <p className="flex items-center gap-1.5 font-mono text-[11px] tracking-wider text-neutral-400 max-[520px]:text-[9.5px]">
+            {info.code}
+            <CopyBtn text={info.code} />
+          </p>
+        </div>
       </div>
       <p className="mt-4 text-[14px] leading-relaxed text-neutral-700 max-[520px]:text-[13px]">
         {info.manifest}
@@ -850,7 +1023,7 @@ function LetterCard({
       <div className="mt-6 flex items-end justify-between gap-3 border-t border-neutral-200 pt-3.5">
         <div className="flex flex-col items-start gap-1 text-xs font-medium text-neutral-500 max-[520px]:gap-0.5">
           {info.realized && (
-            <>
+            <span className="mb-0.5 flex flex-col items-start gap-1 rounded-lg border border-emerald-300/70 bg-emerald-50/60 px-2.5 py-1.5 max-[520px]:px-2 max-[520px]:py-1">
               <span className="rounded-full bg-emerald-500 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-white shadow-sm max-[520px]:px-2.5 max-[520px]:py-0.5 max-[520px]:text-[8.5px]">
                 Gerçekleşti
               </span>
@@ -868,10 +1041,9 @@ function LetterCard({
                   <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
                   <path d="m16 19 2 2 4-4" />
                 </svg>
-                {info.realizedDate}&apos;da &quot;gerçekleşti&quot;
-                işaretlendi
+                {info.realizedDate}
               </span>
-            </>
+            </span>
           )}
           <span className="flex items-center gap-1.5 text-[11px] opacity-90 max-[520px]:gap-1 max-[520px]:text-[9.5px]">
             <svg
@@ -888,11 +1060,9 @@ function LetterCard({
               <path d="M19 16v6" />
               <path d="M16 19h6" />
             </svg>
-            {info.date} tarihinde eklendi
+            {info.date}
           </span>
-          {!info.realized && (
-            <span className="h-px w-full bg-current opacity-25" />
-          )}
+          <span className="h-px w-full bg-current opacity-25" />
           <span className="flex items-center gap-1.5">
             <svg
               viewBox="0 0 24 24"
@@ -906,8 +1076,13 @@ function LetterCard({
               <path d="M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-6a2 2 0 0 1 2.4 0l8 6Z" />
               <path d="m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10" />
             </svg>
-            {info.views.toLocaleString("tr-TR")} kişi manifesti okudu
+            {info.views.toLocaleString("tr-TR")} kişi açtı
           </span>
+          <ReportButton
+            code={info.code}
+            name={info.name}
+            manifest={info.manifest}
+          />
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-1.5">
@@ -929,28 +1104,31 @@ function LetterCard({
                 </b>{" "}
                 kişi tebrik etti
               </span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (cheered) return;
-                  setCheered(true);
-                  setCheers((n) => n + 1);
-                }}
-                className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium shadow-sm transition-all max-[520px]:px-3 max-[520px]:py-1 max-[520px]:text-xs ${
-                  cheered
-                    ? "border-emerald-300 bg-emerald-50 text-emerald-600"
-                    : "border-neutral-200 bg-white/90 text-neutral-600 hover:border-emerald-300 hover:text-emerald-600"
-                }`}
-              >
-                <span
-                  className={`text-base transition-transform duration-300 ${
-                    cheered ? "scale-125" : ""
+              <span className="relative">
+                {cheered && <BurstStars stars={CHEER_STARS} />}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (cheered) return;
+                    setCheered(true);
+                    setCheers((n) => n + 1);
+                  }}
+                  className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium shadow-sm transition-all max-[520px]:px-3 max-[520px]:py-1 max-[520px]:text-xs ${
+                    cheered
+                      ? "wish-yay border-emerald-300 bg-emerald-50 text-emerald-600"
+                      : "wish-btn border-neutral-200 bg-white/90 text-neutral-600 hover:border-emerald-300 hover:text-emerald-600"
                   }`}
                 >
-                  👏
-                </span>
-                Tebrik et
-              </button>
+                  <span
+                    className={`text-base transition-transform duration-300 ${
+                      cheered ? "scale-125" : ""
+                    }`}
+                  >
+                    👏
+                  </span>
+                  Tebrik et
+                </button>
+              </span>
             </>
           ) : (
             <span className="relative">
@@ -1176,6 +1354,16 @@ function ManifestPopup({
               }`,
             }}
           >
+            {/* Mobil kapat — mektubun dışında, sağ üst köşesinde */}
+            <button
+              type="button"
+              onClick={close}
+              aria-label="Kapat"
+              className="absolute -top-11 right-0 z-40 hidden h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white text-lg text-neutral-600 shadow-lg max-[520px]:flex"
+              style={{ opacity: stage === "open" ? 1 : 0 }}
+            >
+              ×
+            </button>
             <div
               ref={letterRef}
               className="max-h-[62vh] overflow-y-auto rounded-[4px] bg-[#fffdf5] px-8 py-7 shadow-[0_16px_44px_rgba(0,0,0,0.35)] max-[520px]:px-5 max-[520px]:py-5"
@@ -1193,13 +1381,20 @@ function ManifestPopup({
                 </p>
               )}
               <div className="mt-1 flex items-center justify-between">
-                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-neutral-400 max-[520px]:text-[9.5px]">
-                  {envelope.sponsored ? "Sponsorlu • Sürpriz" : "Manifest"}
-                </p>
-                <p className="flex items-center gap-1.5 font-mono text-[11px] tracking-wider text-neutral-400 max-[520px]:text-[9.5px]">
-                  {envelope.code}
-                  <CopyBtn text={envelope.code} />
-                </p>
+                {envelope.sponsored && (
+                  <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-neutral-400 max-[520px]:text-[9.5px]">
+                    Sponsorlu • Sürpriz
+                  </p>
+                )}
+                <div className="ml-auto flex flex-col items-end">
+                  <span className="text-[9px] font-medium uppercase tracking-[0.2em] text-neutral-400 max-[520px]:text-[8px]">
+                    Zarf kodu
+                  </span>
+                  <p className="flex items-center gap-1.5 font-mono text-[11px] tracking-wider text-neutral-400 max-[520px]:text-[9.5px]">
+                    {envelope.code}
+                    <CopyBtn text={envelope.code} />
+                  </p>
+                </div>
               </div>
               <p className="mt-4 text-[14px] leading-relaxed text-neutral-700 max-[520px]:text-[13px]">
                 {envelope.manifest}
@@ -1245,11 +1440,11 @@ function ManifestPopup({
             }}
           >
             {envelope.realized && (
-              <>
+              <span className="mb-0.5 flex flex-col items-start gap-1 rounded-lg border border-emerald-300/70 bg-emerald-50/60 px-2.5 py-1.5 shadow-sm backdrop-blur-[1px] max-[520px]:px-2 max-[520px]:py-1">
                 <span className="rounded-full bg-emerald-500 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-white shadow-sm max-[520px]:px-2.5 max-[520px]:py-0.5 max-[520px]:text-[8.5px]">
                   Gerçekleşti
                 </span>
-                <span className="flex items-center gap-1.5 text-[11px] opacity-90 max-[520px]:text-[9.5px] max-[520px]:gap-1">
+                <span className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-900/80 max-[520px]:gap-1 max-[520px]:text-[9.5px]">
                   <svg
                     viewBox="0 0 24 24"
                     fill="none"
@@ -1263,10 +1458,9 @@ function ManifestPopup({
                     <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
                     <path d="m16 19 2 2 4-4" />
                   </svg>
-                  {envelope.realizedDate}&apos;da &quot;gerçekleşti&quot;
-                  işaretlendi
+                  {envelope.realizedDate}
                 </span>
-              </>
+              </span>
             )}
             <span className="flex items-center gap-1.5 text-[11px] opacity-90 max-[520px]:text-[9.5px] max-[520px]:gap-1">
               <svg
@@ -1283,11 +1477,9 @@ function ManifestPopup({
                 <path d="M19 16v6" />
                 <path d="M16 19h6" />
               </svg>
-              {envelope.date} tarihinde eklendi
+              {envelope.date}
             </span>
-            {!envelope.realized && (
-              <span className="h-px w-full bg-current opacity-25" />
-            )}
+            <span className="h-px w-full bg-current opacity-25" />
             <span className="flex items-center gap-1.5">
             <svg
               viewBox="0 0 24 24"
@@ -1303,6 +1495,14 @@ function ManifestPopup({
             </svg>
             {envelope.views.toLocaleString("tr-TR")} kişi zarfı açtı
             </span>
+            {!envelope.sponsored && (
+              <ReportButton
+                code={envelope.code}
+                name={envelope.name}
+                manifest={envelope.manifest}
+                below
+              />
+            )}
           </div>
 
           {/* Sağ alt — normal zarfta şans dile; gerçekleşende tebrik akışı */}
@@ -1342,28 +1542,31 @@ function ManifestPopup({
                   </span>
                   <b className="font-semibold">{cheers}</b> kişi tebrik etti
                 </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (cheered) return;
-                    setCheered(true);
-                    setCheers((n) => n + 1);
-                  }}
-                  className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium shadow-sm transition-all max-[520px]:px-3 max-[520px]:py-1 max-[520px]:text-xs ${
-                    cheered
-                      ? "border-emerald-300 bg-emerald-50 text-emerald-600"
-                      : "border-neutral-200 bg-white/90 text-neutral-600 hover:border-emerald-300 hover:text-emerald-600"
-                  }`}
-                >
-                  <span
-                    className={`text-base transition-transform duration-300 ${
-                      cheered ? "scale-125" : ""
+                <span className="relative">
+                  {cheered && <BurstStars stars={CHEER_STARS} />}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (cheered) return;
+                      setCheered(true);
+                      setCheers((n) => n + 1);
+                    }}
+                    className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium shadow-sm transition-all max-[520px]:px-3 max-[520px]:py-1 max-[520px]:text-xs ${
+                      cheered
+                        ? "wish-yay border-emerald-300 bg-emerald-50 text-emerald-600"
+                        : "wish-btn border-neutral-200 bg-white/90 text-neutral-600 hover:border-emerald-300 hover:text-emerald-600"
                     }`}
                   >
-                    👏
-                  </span>
-                  Tebrik et
-                </button>
+                    <span
+                      className={`text-base transition-transform duration-300 ${
+                        cheered ? "scale-125" : ""
+                      }`}
+                    >
+                      👏
+                    </span>
+                    Tebrik et
+                  </button>
+                </span>
               </>
             ) : (
               <span className="relative">
@@ -1474,7 +1677,7 @@ function ManifestPopup({
           <button
             type="button"
             onClick={close}
-            className="absolute -right-2 z-40 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white text-xl text-neutral-600 shadow-lg transition-all hover:scale-110 max-[520px]:h-8 max-[520px]:w-8 max-[520px]:text-base"
+            className="absolute -right-2 z-40 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white text-xl text-neutral-600 shadow-lg transition-all hover:scale-110 max-[520px]:hidden"
             style={{ top: 95 * geo.k, opacity: stage === "open" ? 1 : 0 }}
             aria-label="Kapat"
           >
@@ -1537,7 +1740,7 @@ export default function Home() {
         // Şişeye koyma (150+ hak) da üyenin onayıyla olur
         if (m.bottled) env.bottled = true;
         // Hediye kutusu (250+ hak): kutudaki manifest zarf/şişe olarak
-        // görünmez, duvarın tepesindeki kutuda sergilenir
+        // görünmez, duvarda kurdeleli kutuda sergilenir
         if (m.boxed) env.boxed = true;
         list.push(env);
       }

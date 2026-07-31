@@ -38,7 +38,7 @@ export const RIBBON_GRADS = [
 // anlamı var; üye panelden kendisi seçer (duvar + panel ortak kullanır)
 export const SPECIAL_COLORS = [
   {
-    label: "Prestij",
+    label: "Vizyon",
     color: {
       base: "#1c1c1c",
       dark: "#000000",
@@ -71,7 +71,7 @@ export const SPECIAL_COLORS = [
     },
   },
   {
-    label: "Asalet",
+    label: "Hayal",
     color: {
       base: "#552881",
       dark: "#2a0f47",

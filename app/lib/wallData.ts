@@ -65,6 +65,49 @@ export const ADS_KEY = "mw_ads";
 // +10'ar dilenir; üye manifestlerine kalıcı yazılır (ödül akışı testi için)
 export const TEST_KEY = "mw_test_mode";
 
+// ── Bildirimler — ziyaretçi bir manifesti şikâyet eder, admin panele düşer ──
+export const REPORTS_KEY = "mw_reports";
+
+export type ReportReason = "Argo" | "Hakaret" | "Kötü niyet" | "Rahatsız edici";
+export const REPORT_REASONS: ReportReason[] = [
+  "Argo",
+  "Hakaret",
+  "Kötü niyet",
+  "Rahatsız edici",
+];
+
+export type Report = {
+  code: string; // manifest kodu — zarf/şişe/kutu ayrımı olmadan tekildir
+  name: string;
+  manifest: string;
+  reason: ReportReason;
+  ts: number;
+  date: string; // okunur tarih (tr-TR)
+};
+
+export function getReports(): Report[] {
+  try {
+    return JSON.parse(localStorage.getItem(REPORTS_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+export function addReport(r: Report) {
+  localStorage.setItem(REPORTS_KEY, JSON.stringify([r, ...getReports()]));
+}
+
+export function removeReport(code: string, ts: number) {
+  localStorage.setItem(
+    REPORTS_KEY,
+    JSON.stringify(getReports().filter((r) => !(r.code === code && r.ts === ts))),
+  );
+}
+
+export function isReported(code: string): boolean {
+  return getReports().some((r) => r.code === code);
+}
+
 // Sponsor zarf teması — Petimemama marka renkleri (canlı, parlak)
 const SPONSOR_COLOR: EnvelopeColor = {
   base: "#ffffff",
@@ -283,6 +326,14 @@ export function buildEnvelopes(): Envelope[] {
     if (env.bottled && !env.boxed && bottledRealized < 2) {
       env.realized = true;
       bottledRealized++;
+    }
+  }
+
+  // 1 kutudaki manifest de gerçekleşmiş olsun
+  for (const env of list) {
+    if (env.boxed) {
+      env.realized = true;
+      break;
     }
   }
 

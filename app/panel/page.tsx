@@ -6,7 +6,7 @@
 // işaretleme, manifest silme ve hesap silme buradan yapılır (demo:
 // veriler localStorage'da; canlıda backend'e bağlanacak).
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SiteHeader from "../components/SiteHeader";
 import CopyBtn from "../components/CopyBtn";
 import {
@@ -15,6 +15,7 @@ import {
   MiniEnvelope,
   PREVIEW_PASTEL,
   PREVIEW_SPECIAL,
+  RIBBON_GRADS,
   SPECIAL_COLORS,
   STICKERS,
 } from "../components/RewardVisuals";
@@ -34,6 +35,21 @@ const inputCls =
   "w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm " +
   "text-neutral-800 outline-none transition-colors placeholder:text-neutral-400 " +
   "focus:border-amber-400 focus:ring-2 focus:ring-amber-100";
+
+// ── Ödül adımı sıralaması — sticker → özel renk → şişe → kutu ────────────
+// Üye hakları hangi sırada kazandıysa o sırada kullanmalı; sıradaki adım
+// tamamlanmadan sonraki adımın popup'ı açılmaz
+type RewardStep = "sticker" | "special" | "bottle" | "box";
+const STEP_ORDER: RewardStep[] = ["sticker", "special", "bottle", "box"];
+
+// Manifestin tamamlanmamış en erken ödül adımı (hak kazanılmışsa)
+function firstPendingStep(m: MemberManifest): RewardStep | null {
+  if (m.luck >= 20 && !m.sticker) return "sticker";
+  if (m.luck >= 50 && m.special == null) return "special";
+  if (m.luck >= 150 && !m.bottled && !m.boxed) return "bottle";
+  if (m.luck >= 250 && !m.boxed) return "box";
+  return null;
+}
 
 // Manifest metni düz metindir: emoji/ikon karakterleri yazarken ayıklanır
 function stripEmoji(s: string): string {
@@ -55,24 +71,985 @@ const STAGES = [
   {
     title: "Sticker Yapıştırma",
     threshold: 20,
-    desc: "20 şansa ulaşan zarfın kapağına manifest türüne uygun bir süs sticker'ı yapıştırılır.",
+    desc: "20 şansa ulaşınca zarfının kapağına manifest türüne uygun bir süs sticker'ı yapıştırabilirsin.",
   },
   {
     title: "Özel Renk",
     threshold: 50,
-    desc: "50 şansa ulaşan zarf, duvarda kendini belli eden parlak özel seri renge bürünür.",
+    desc: "50 şansa ulaşınca zarfın için duvarda kendini belli eden parlak özel seri renklerden birini seçebilirsin.",
   },
   {
     title: "Şişedeki Not",
     threshold: 150,
-    desc: "150 şansa ulaşan manifest zarftan çıkar, duvarda cam şişe içinde sergilenir.",
+    desc: "150 şansa ulaşınca manifestini zarftan çıkarıp duvarda cam şişenin içine koyabilirsin.",
   },
   {
     title: "Hediye Kutusu",
     threshold: 250,
-    desc: "250 şansa ulaşan manifest duvarın tepesindeki kurdeleli hediye kutusunda sergilenir.",
+    desc: "250 şansa ulaşınca manifestini duvardaki kurdeleli hediye kutusuna koyabilirsin.",
   },
 ];
+
+// ── Paylaşım görseli — Instagram tarzı 1080×1350 kart, canvas ile çizilir ──
+// Zarf açık ya da kapalı seçilebilir; zarf kodu görselin altında pill içinde
+
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// Kelime bazlı satır sarma — canvas'ta metin genişliğine göre böler
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxW: number,
+): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = "";
+  for (const w of words) {
+    const test = line ? `${line} ${w}` : w;
+    if (ctx.measureText(test).width > maxW && line) {
+      lines.push(line);
+      line = w;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+// Yeşil "GERÇEKLEŞTİ" pill'i — kapalı zarfta kapağa, açıkta ön cebe çizilir
+function drawRealizedPill(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  date?: string,
+) {
+  ctx.font = "700 30px Arial";
+  const tw = ctx.measureText("GERÇEKLEŞTİ").width;
+  const pw = tw + 76;
+  roundRect(ctx, cx - pw / 2, cy - 33, pw, 66, 33);
+  ctx.fillStyle = "#10b981";
+  ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("GERÇEKLEŞTİ", cx, cy + 2);
+  if (date) {
+    ctx.font = "600 26px Arial";
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.fillText(date, cx, cy + 62);
+  }
+  ctx.textBaseline = "alphabetic";
+}
+
+// Şişe — duvardaki BottleVisual'ın canvas kopyası (aynı SVG path'leri).
+// noteOut: açık sahne — rulo not dışarıda, mantar fırlamış
+function drawBottle(
+  ctx: CanvasRenderingContext2D,
+  m: MemberManifest,
+  hand: string,
+  opts?: {
+    cx?: number;
+    cy?: number;
+    s?: number;
+    rot?: number;
+    noteOut?: boolean;
+  },
+) {
+  // Varsayılan: kapalı sahnenin dik şişesi (viewBox 200×520 → ~250×650)
+  const { cx = 540, cy = 625, s = 1.25, rot = 0, noteOut = false } =
+    opts ?? {};
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rot);
+  ctx.scale(s, s);
+  ctx.translate(-100, -260);
+
+  const glass = new Path2D(
+    "M82 60 L82 140 C82 162 58 172 50 192 C42 210 40 222 40 242 L40 458 C40 492 62 502 100 502 C138 502 160 492 160 458 L160 242 C160 222 158 210 150 192 C142 172 118 162 118 140 L118 60 Z",
+  );
+  const gGrad = ctx.createLinearGradient(40, 0, 160, 0);
+  gGrad.addColorStop(0, "#bfe4ee");
+  gGrad.addColorStop(0.45, "#8ec7d8");
+  gGrad.addColorStop(0.7, "#a9d8e5");
+  gGrad.addColorStop(1, "#7db8cb");
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = gGrad;
+  ctx.fill(glass);
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = "#5d98ab";
+  ctx.lineWidth = 3;
+  ctx.stroke(glass);
+  ctx.globalAlpha = 1;
+
+  // Rulo not — hafif eğik (açık sahnede not dışarıda, şişe boş)
+  if (!noteOut) {
+    ctx.save();
+    ctx.translate(100, 335);
+    ctx.rotate((-11 * Math.PI) / 180);
+    ctx.translate(-100, -335);
+    roundRect(ctx, 77, 196, 46, 274, 21);
+    ctx.fillStyle = "#f3e6be";
+    ctx.fill();
+    ctx.strokeStyle = "#cdb583";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(100, 198, 23, 8, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#f2e4ba";
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(100, 198, 12, 4.5, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#e4d09e";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(100, 468, 21, 6.5, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#d8c290";
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Cam parlamaları
+  ctx.globalAlpha = 0.45;
+  roundRect(ctx, 52, 215, 13, 240, 6.5);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  ctx.globalAlpha = 0.5;
+  roundRect(ctx, 86, 70, 8, 70, 4);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Şişe ağzı + mantar
+  ctx.beginPath();
+  ctx.ellipse(100, 60, 20, 6, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "#cfeaf2";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(93,152,171,0.5)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Mantar — açık sahnede fırlamış: ağzın ilerisinde havada, eğik
+  ctx.save();
+  if (noteOut) {
+    ctx.translate(148, -52);
+    ctx.rotate((38 * Math.PI) / 180);
+    ctx.translate(-100, -40);
+  }
+  const cork = ctx.createLinearGradient(0, 16, 0, 64);
+  cork.addColorStop(0, "#c99a66");
+  cork.addColorStop(1, "#8a5a2f");
+  roundRect(ctx, 80, 16, 40, 48, 9);
+  ctx.fillStyle = cork;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(100, 18, 19, 5, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "#a97b47";
+  ctx.fill();
+  ctx.restore();
+
+  // Kurdele — üyenin özel rengi (yoksa siyah)
+  const rg = RIBBON_GRADS[(m.special ?? 0) % RIBBON_GRADS.length];
+  const rGrad = ctx.createLinearGradient(54, 98, 146, 150);
+  rGrad.addColorStop(0, rg[0]);
+  rGrad.addColorStop(0.55, rg[1]);
+  rGrad.addColorStop(1, rg[2]);
+  ctx.fillStyle = rGrad;
+  roundRect(ctx, 76, 118, 48, 16, 5);
+  ctx.fill();
+  ctx.fill(new Path2D("M93 130 L70 172 L79 164 L86 174 L104 136 Z"));
+  ctx.fill(new Path2D("M107 130 L130 172 L121 164 L114 174 L96 136 Z"));
+  ctx.fill(
+    new Path2D("M100 126 C80 98 46 104 54 128 C60 150 88 144 100 126 Z"),
+  );
+  ctx.fill(
+    new Path2D("M100 126 C120 98 154 104 146 128 C140 150 112 144 100 126 Z"),
+  );
+  roundRect(ctx, 91, 117, 18, 17, 5);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.15)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Sticker — cama yapıştırılmış
+  if (m.sticker) {
+    ctx.save();
+    ctx.translate(60, 240);
+    ctx.rotate((-14 * Math.PI) / 180);
+    ctx.font = "44px 'Segoe UI Emoji', serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(m.sticker, 0, 0);
+    ctx.restore();
+  }
+
+  // Kağıt etiket bandı — ⭐ şans + rumuz
+  roundRect(ctx, 39, 268, 122, 64, 3);
+  ctx.fillStyle = "#f5ecd4";
+  ctx.fill();
+  ctx.strokeStyle = "#dcc7a0";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(39, 268);
+  ctx.lineTo(161, 268);
+  ctx.moveTo(39, 332);
+  ctx.lineTo(161, 332);
+  ctx.stroke();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.font = "11px 'Segoe UI Emoji', serif";
+  ctx.fillText("⭐", 100, 284);
+  ctx.font = "700 13px Arial";
+  ctx.fillStyle = "#8a6d33";
+  ctx.fillText(m.luck.toLocaleString("tr-TR"), 100, 301);
+  ctx.font = `600 19px ${hand}`;
+  ctx.fillStyle = "#6b5426";
+  ctx.fillText(m.name, 100, 324);
+
+  // Gerçekleşti bandı — etiketin altında yeşil şerit
+  if (m.realized) {
+    const eGrad = ctx.createLinearGradient(39, 374, 161, 396);
+    eGrad.addColorStop(0, "#34d399");
+    eGrad.addColorStop(1, "#059669");
+    roundRect(ctx, 39, 374, 122, 22, 3);
+    ctx.fillStyle = eGrad;
+    ctx.fill();
+    ctx.font = "700 11px Arial";
+    ctx.fillStyle = "#ffffff";
+    try {
+      ctx.letterSpacing = "1px";
+    } catch {}
+    ctx.fillText("GERÇEKLEŞTİ", 100, 389);
+    try {
+      ctx.letterSpacing = "0px";
+    } catch {}
+  }
+  ctx.restore();
+}
+
+// Hediye kutusu — duvardaki GiftBoxVisual'ın canvas kopyası
+function drawGiftBox(
+  ctx: CanvasRenderingContext2D,
+  m: MemberManifest,
+  hand: string,
+  opts?: {
+    x?: number;
+    y?: number;
+    w?: number;
+    depth?: boolean; // kapak tek başına çizilirken kalınlık kutuda kalır
+    glow?: boolean;
+    rot?: number; // savrulmuş kapak açısı
+  },
+) {
+  const w = opts?.w ?? 380;
+  const h = w * 1.32;
+  const x = opts?.x ?? 540 - w / 2 - 24; // etiket sağa taştığı için hafif sola
+  const y = opts?.y ?? 350;
+  const u = w / 150;
+  const { depth = true, glow = true, rot = 0 } = opts ?? {};
+
+  ctx.save();
+  if (rot) {
+    ctx.translate(x + w / 2, y + h / 2);
+    ctx.rotate(rot);
+    ctx.translate(-x - w / 2, -y - h / 2);
+  }
+
+  // Kapak arasından sızan amber ışık — yumuşak hare
+  if (glow) {
+    const halo = ctx.createRadialGradient(
+      x + w / 2,
+      y + h / 2,
+      40,
+      x + w / 2,
+      y + h / 2,
+      w * 0.85,
+    );
+    halo.addColorStop(0, "rgba(255,178,56,0.4)");
+    halo.addColorStop(1, "rgba(255,178,56,0)");
+    ctx.fillStyle = halo;
+    ctx.fillRect(x - 160, y - 160, w + 320, h + 320);
+  }
+
+  // Karton kalınlığı — sağ/alt taşma
+  if (depth) {
+    roundRect(ctx, x + 8 * u, y + 8 * u, w, h, 5 * u);
+    ctx.fillStyle = "#8a6f49";
+    ctx.fill();
+  }
+
+  // Gövde — kraft ambalaj
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.3)";
+  ctx.shadowBlur = 18 * u;
+  ctx.shadowOffsetX = 6 * u;
+  ctx.shadowOffsetY = 9 * u;
+  roundRect(ctx, x, y, w, h, 5 * u);
+  const kraft = ctx.createLinearGradient(x, y, x + w, y + h);
+  kraft.addColorStop(0, "#dcc194");
+  kraft.addColorStop(0.7, "#c6a575");
+  kraft.addColorStop(1, "#b8955f");
+  ctx.fillStyle = kraft;
+  ctx.fill();
+  ctx.restore();
+
+  // Kurdeleler + ışık — gövdeye kırpılı
+  ctx.save();
+  roundRect(ctx, x, y, w, h, 5 * u);
+  ctx.clip();
+  const bordo = ctx.createLinearGradient(x, y, x + w, y + h);
+  bordo.addColorStop(0, "#9e2439");
+  bordo.addColorStop(0.55, "#5c0f1d");
+  bordo.addColorStop(1, "#7b1526");
+  ctx.fillStyle = bordo;
+  ctx.fillRect(x + 0.38 * w - 8.5 * u, y, 17 * u, h);
+  ctx.fillRect(x, y + 0.26 * h, w, 17 * u);
+  const sheen = ctx.createLinearGradient(x, y, x + w * 0.9, y + h * 0.55);
+  sheen.addColorStop(0, "rgba(255,255,255,0.22)");
+  sheen.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = sheen;
+  ctx.fillRect(x, y, w, h);
+  ctx.restore();
+
+  // Fiyonk — kurdele kesişiminde
+  ctx.save();
+  const bu = 0.92 * u;
+  ctx.translate(x + 0.38 * w - 50 * bu, y + 0.26 * h - 0.44 * 90 * bu);
+  ctx.scale(bu, bu);
+  const bowGrad = ctx.createLinearGradient(0, 0, 100, 90);
+  bowGrad.addColorStop(0, "#9e2439");
+  bowGrad.addColorStop(0.55, "#5c0f1d");
+  bowGrad.addColorStop(1, "#7b1526");
+  ctx.fillStyle = bowGrad;
+  ctx.fill(
+    new Path2D("M50 46 C40 60 28 68 18 82 L30 78 C38 66 46 58 50 46 Z"),
+  );
+  ctx.fill(new Path2D("M50 46 C58 58 70 64 80 74 L70 60 C62 54 54 50 50 46 Z"));
+  ctx.fill(new Path2D("M52 44 C50 28 56 16 50 4 C64 12 60 30 58 44 Z"));
+  ctx.fill(new Path2D("M50 46 C26 16 4 26 10 44 C15 58 36 56 50 46 Z"));
+  ctx.fill(new Path2D("M50 46 C70 14 94 22 90 40 C86 55 64 54 50 46 Z"));
+  ctx.beginPath();
+  ctx.arc(50, 45, 6.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Sticker — sol alt boş alanda
+  if (m.sticker) {
+    ctx.save();
+    ctx.translate(x + 0.19 * w, y + 0.64 * h);
+    ctx.rotate((-10 * Math.PI) / 180);
+    ctx.font = `${26 * u}px 'Segoe UI Emoji', serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(m.sticker, 0, 0);
+    ctx.restore();
+  }
+
+  // Gerçekleşti pill'i — sol alt bölgede hafif eğik
+  if (m.realized) {
+    ctx.save();
+    ctx.translate(x + 0.3 * w, y + 0.82 * h);
+    ctx.rotate((-5 * Math.PI) / 180);
+    ctx.font = `700 ${9 * u}px Arial`;
+    const tw = ctx.measureText("GERÇEKLEŞTİ").width;
+    roundRect(
+      ctx,
+      -tw / 2 - 8 * u,
+      -7 * u,
+      tw + 16 * u,
+      14 * u,
+      7 * u,
+    );
+    ctx.fillStyle = "#10b981";
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("GERÇEKLEŞTİ", 0, 1);
+    ctx.restore();
+  }
+
+  // Kağıt etiket — sağ kenarda dikine (-90°): ⭐ şans (+👏 tebrik) + rumuz
+  ctx.save();
+  ctx.translate(x + w - 12 * u, y + h - 62 * u);
+  ctx.rotate((-90 * Math.PI) / 180);
+  roundRect(ctx, -58 * u, -22 * u, 116 * u, 44 * u, 3);
+  ctx.fillStyle = "#f5ecd4";
+  ctx.fill();
+  ctx.strokeStyle = "#dcc7a0";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-58 * u, -22 * u);
+  ctx.lineTo(58 * u, -22 * u);
+  ctx.moveTo(-58 * u, 22 * u);
+  ctx.lineTo(58 * u, 22 * u);
+  ctx.stroke();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  const col = m.realized ? 14 * u : 0;
+  ctx.font = `${9 * u}px 'Segoe UI Emoji', serif`;
+  ctx.fillText("⭐", -col, -8 * u);
+  if (m.realized) ctx.fillText("👏", col, -8 * u);
+  ctx.font = `700 ${10 * u}px Arial`;
+  ctx.fillStyle = "#8a6d33";
+  ctx.fillText(m.luck.toLocaleString("tr-TR"), -col, 3 * u);
+  if (m.realized) ctx.fillText(m.cheers.toLocaleString("tr-TR"), col, 3 * u);
+  ctx.font = `600 ${15 * u}px ${hand}`;
+  ctx.fillStyle = "#6b5426";
+  ctx.fillText(m.name, 0, 17 * u);
+  ctx.restore();
+  ctx.restore(); // dış dönüş (rot) katmanı
+}
+
+// Mektup kağıdı — açık şişe/kutu sahnelerinde manifest metnini taşır
+// (şans sayısı çizilmez; şişe bandı ve kutu etiketi zaten gösteriyor)
+function drawLetter(
+  ctx: CanvasRenderingContext2D,
+  m: MemberManifest,
+  hand: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.3)";
+  ctx.shadowBlur = 40;
+  ctx.shadowOffsetY = 18;
+  roundRect(ctx, x, y, w, h, 10);
+  ctx.fillStyle = "#fffdf5";
+  ctx.fill();
+  ctx.restore();
+  // Rumuz + kod
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#2f2c28";
+  ctx.font = `700 60px ${hand}`;
+  ctx.fillText(m.name, x + 50, y + 92);
+  ctx.textAlign = "right";
+  ctx.font = "700 26px 'Courier New', monospace";
+  ctx.fillStyle = "#a8a294";
+  ctx.fillText(m.code, x + w - 50, y + 88);
+  // Manifest metni — sarılır, kağıda sığmayan kısım … ile kesilir
+  ctx.textAlign = "left";
+  ctx.font = "400 31px 'Segoe UI', Arial";
+  ctx.fillStyle = "#4b473f";
+  const lines = wrapText(ctx, m.manifest, w - 100);
+  const maxLines = Math.floor((h - 204) / 48);
+  lines.slice(0, maxLines).forEach((ln, i) => {
+    const last = i === maxLines - 1 && lines.length > maxLines;
+    ctx.fillText(last ? `${ln}…` : ln, x + 50, y + 164 + i * 48);
+  });
+  // Sticker — normalde durduğu köşede: kağıdın sağ altında, hafif eğik
+  if (m.sticker) {
+    ctx.save();
+    ctx.translate(x + w - 78, y + h - 72);
+    ctx.rotate((-10 * Math.PI) / 180);
+    ctx.font = "64px 'Segoe UI Emoji', serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(m.sticker, 0, 0);
+    ctx.restore();
+    ctx.textBaseline = "alphabetic";
+  }
+}
+
+async function drawShareImage(
+  canvas: HTMLCanvasElement,
+  m: MemberManifest,
+  mode: "closed" | "open",
+) {
+  const W = 1080;
+  const H = 1350;
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const c = m.special != null
+    ? SPECIAL_COLORS[m.special % SPECIAL_COLORS.length].color
+    : PANEL_COLORS[m.colorIdx % PANEL_COLORS.length];
+  const hand =
+    getComputedStyle(document.body).getPropertyValue("--font-caveat").trim() ||
+    "cursive";
+  try {
+    await document.fonts.ready;
+  } catch {}
+
+  // Zemin — krem, üstüne zarf renginin hafif pastel tonu
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#fdfbf6");
+  bg.addColorStop(1, "#f2ede2");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 0.14;
+  ctx.fillStyle = c.base;
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 1;
+
+  // Köşelere serpilmiş yıldızlar
+  const sparks: [number, number, string, number][] = [
+    [92, 190, "✨", 42],
+    [986, 168, "⭐", 34],
+    [116, 1116, "⭐", 34],
+    [948, 1130, "✨", 44],
+    [66, 660, "💫", 34],
+    [1004, 700, "✨", 28],
+  ];
+  ctx.globalAlpha = 0.55;
+  ctx.textAlign = "center";
+  for (const [x, y, e, s] of sparks) {
+    ctx.font = `${s}px 'Segoe UI Emoji', serif`;
+    ctx.fillText(e, x, y);
+  }
+  ctx.globalAlpha = 1;
+
+  // Başlık
+  ctx.fillStyle = "#3d3a34";
+  ctx.font = `700 86px ${hand}`;
+  ctx.fillText("Manifest Duvarı", W / 2, 150);
+  ctx.font = `500 44px ${hand}`;
+  ctx.fillStyle = "#6f6a5e";
+  ctx.fillText(
+    m.boxed
+      ? "manifestim duvarda hediye kutusunda 🎁"
+      : m.bottled
+        ? "manifestim duvarda şişede 🍾"
+        : "manifestim duvarda asılı ✨",
+    W / 2,
+    218,
+  );
+
+  const ex = 180;
+  const ew = 720;
+
+  if (mode === "closed" && m.boxed) {
+    // ── Hediye kutusu — manifest kutuda sergileniyor ──
+    drawGiftBox(ctx, m, hand);
+  } else if (mode === "closed" && m.bottled) {
+    // ── Şişe — manifest şişede sergileniyor ──
+    drawBottle(ctx, m, hand);
+  } else if (mode === "closed") {
+    // ── Kapalı zarf ──
+    const ey = 330;
+    const eh = 520;
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.28)";
+    ctx.shadowBlur = 44;
+    ctx.shadowOffsetY = 26;
+    roundRect(ctx, ex, ey, ew, eh, 16);
+    ctx.fillStyle = c.base;
+    ctx.fill();
+    ctx.restore();
+    // Kapak — üstten aşağı bakan üçgen
+    ctx.beginPath();
+    ctx.moveTo(ex + 2, ey + 2);
+    ctx.lineTo(ex + ew - 2, ey + 2);
+    ctx.lineTo(ex + ew / 2, ey + eh * 0.56);
+    ctx.closePath();
+    ctx.fillStyle = c.dark;
+    ctx.fill();
+    // Sticker — duvardaki slotunda: sol/sağ (%24/%76), kapak hizasında,
+    // hafif dönük. Slot koddan türetilir ki her açılışta aynı yanda dursun
+    if (m.sticker) {
+      const slot = m.code.charCodeAt(0) % 2 ? 0.76 : 0.24;
+      ctx.save();
+      ctx.translate(ex + ew * slot, ey + eh * 0.56 - 52);
+      ctx.rotate(((slot === 0.24 ? -12 : 10) * Math.PI) / 180);
+      ctx.font = "104px 'Segoe UI Emoji', serif";
+      ctx.textBaseline = "middle";
+      ctx.fillText(m.sticker, 0, 0);
+      ctx.restore();
+      ctx.textBaseline = "alphabetic";
+    }
+    // Gerçekleşti — kapağın üst bölgesinde
+    if (m.realized) drawRealizedPill(ctx, ex + ew / 2, ey + 120, m.realizedDate);
+    // Rumuz — zarf ön yüzünde el yazısı
+    ctx.fillStyle = c.ink;
+    ctx.font = `700 72px ${hand}`;
+    ctx.fillText(m.name, ex + ew / 2, ey + eh * 0.86);
+    // Şans — zarfın altında
+    ctx.font = "600 32px Arial";
+    ctx.fillStyle = "#6f6a5e";
+    ctx.fillText(
+      `⭐ ${m.luck.toLocaleString("tr-TR")} kişi şans diledi`,
+      W / 2,
+      ey + eh + 92,
+    );
+  } else if (m.boxed) {
+    // ── Açık kutu — popup animasyonunun son karesi: kapak sol üste
+    // savrulmuş (mektubun üstüne biner), açık gövde altın ışıkla dolu,
+    // mektup içinden yükselir ──
+    const bw = 360;
+    const bh = bw * 1.32; // ~475
+    const bx = 540 - bw / 2;
+    const byy = 620;
+    const bu = bw / 150;
+    // Altın hale — kutunun çevresinde
+    const halo = ctx.createRadialGradient(
+      540,
+      byy + bh / 2,
+      40,
+      540,
+      byy + bh / 2,
+      420,
+    );
+    halo.addColorStop(0, "rgba(255,233,168,0.8)");
+    halo.addColorStop(0.55, "rgba(255,215,106,0.3)");
+    halo.addColorStop(1, "rgba(255,215,106,0)");
+    ctx.fillStyle = halo;
+    ctx.fillRect(120, byy - 320, 840, 840);
+    // Karton kalınlığı + açık gövde çerçevesi
+    roundRect(ctx, bx + 8 * bu, byy + 8 * bu, bw, bh, 5 * bu);
+    ctx.fillStyle = "#8a6f49";
+    ctx.fill();
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.35)";
+    ctx.shadowBlur = 50;
+    ctx.shadowOffsetY = 18;
+    roundRect(ctx, bx, byy, bw, bh, 5 * bu);
+    ctx.fillStyle = "#a98b5c";
+    ctx.fill();
+    ctx.restore();
+    // Kutunun içi — karanlık zemin, kapak kalkınca altın ışıkla dolar
+    roundRect(ctx, bx + 13 * bu, byy + 13 * bu, bw - 26 * bu, bh - 26 * bu, 12);
+    ctx.fillStyle = "#4a3a22";
+    ctx.fill();
+    const inner = ctx.createRadialGradient(
+      540,
+      byy + bh * 0.45,
+      10,
+      540,
+      byy + bh * 0.45,
+      bw * 0.62,
+    );
+    inner.addColorStop(0, "#ffe9a0");
+    inner.addColorStop(0.45, "#d89a52");
+    inner.addColorStop(0.85, "rgba(74,58,34,0)");
+    roundRect(ctx, bx + 13 * bu, byy + 13 * bu, bw - 26 * bu, bh - 26 * bu, 12);
+    ctx.fillStyle = inner;
+    ctx.fill();
+    // Mektup — kutunun içinden yükselir, kağıdın altı gövdenin önünde
+    drawLetter(ctx, m, hand, 230, 400, 620, 640);
+    // Kapak — sol üste savrulmuş, hafif eğik; mektubun üstüne biner
+    drawGiftBox(ctx, m, hand, {
+      w: 260,
+      x: 100,
+      y: 470,
+      depth: false,
+      glow: false,
+      rot: (-15 * Math.PI) / 180,
+    });
+    // Kutudan yükselen ışıltılar
+    ctx.textAlign = "center";
+    ctx.globalAlpha = 0.9;
+    ctx.font = "34px 'Segoe UI Emoji', serif";
+    ctx.fillText("✨", 262, 370);
+    ctx.font = "28px 'Segoe UI Emoji', serif";
+    ctx.fillText("⭐", 880, 470);
+    ctx.font = "26px 'Segoe UI Emoji', serif";
+    ctx.fillText("✦", 840, 380);
+    ctx.globalAlpha = 1;
+  } else if (m.bottled) {
+    // ── Açık şişe — popup son karesi: şişe yatmış, mantar fırlamış
+    // havada, not aşağıda açılmış; şişe mektubun üstüne hafifçe biner ──
+    drawLetter(ctx, m, hand, 230, 460, 620, 590);
+    drawBottle(ctx, m, hand, {
+      cx: 520,
+      cy: 360,
+      s: 1.1,
+      rot: (105 * Math.PI) / 180,
+      noteOut: true,
+    });
+  } else {
+    // ── Açık zarf: mektup zarftan çıkık ──
+    const by = 640; // zarf gövdesinin üst kenarı
+    const bh = 440;
+    // Arka yüzey
+    roundRect(ctx, ex, by, ew, bh, 16);
+    ctx.fillStyle = c.dark;
+    ctx.fill();
+    // Açık kapak — yukarı bakan üçgen (mektubun arkasında)
+    ctx.beginPath();
+    ctx.moveTo(ex, by + 6);
+    ctx.lineTo(ex + ew, by + 6);
+    ctx.lineTo(ex + ew / 2, by - 240);
+    ctx.closePath();
+    ctx.fillStyle = c.dark;
+    ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,0.12)";
+    ctx.fill();
+    // Mektup kağıdı
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.30)";
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetY = 18;
+    roundRect(ctx, 230, 268, 620, 626, 10);
+    ctx.fillStyle = "#fffdf5";
+    ctx.fill();
+    ctx.restore();
+    // Rumuz + kod
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#2f2c28";
+    ctx.font = `700 60px ${hand}`;
+    ctx.fillText(m.name, 280, 360);
+    ctx.textAlign = "right";
+    ctx.font = "700 26px 'Courier New', monospace";
+    ctx.fillStyle = "#a8a294";
+    ctx.fillText(m.code, 800, 356);
+    // Manifest metni — sarılır, kağıda sığmayan kısım … ile kesilir
+    ctx.textAlign = "left";
+    ctx.font = "400 31px 'Segoe UI', Arial";
+    ctx.fillStyle = "#4b473f";
+    const lines = wrapText(ctx, m.manifest, 530);
+    const maxLines = 9;
+    lines.slice(0, maxLines).forEach((ln, i) => {
+      const last = i === maxLines - 1 && lines.length > maxLines;
+      ctx.fillText(last ? `${ln}…` : ln, 280, 432 + i * 48);
+    });
+    // Ön cep — V kesimli, alt köşeleri yuvarlak
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.28)";
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetY = 22;
+    ctx.beginPath();
+    ctx.moveTo(ex, by);
+    ctx.lineTo(ex + ew / 2, by + bh * 0.52);
+    ctx.lineTo(ex + ew, by);
+    ctx.lineTo(ex + ew, by + bh - 16);
+    ctx.arcTo(ex + ew, by + bh, ex + ew - 16, by + bh, 16);
+    ctx.lineTo(ex + 16, by + bh);
+    ctx.arcTo(ex, by + bh, ex, by + bh - 16, 16);
+    ctx.closePath();
+    ctx.fillStyle = c.base;
+    ctx.fill();
+    ctx.restore();
+    // Sticker — ön cebin sağında
+    if (m.sticker) {
+      ctx.textAlign = "center";
+      ctx.font = "78px 'Segoe UI Emoji', serif";
+      ctx.fillText(m.sticker, ex + ew - 130, by + bh - 90);
+    }
+    // Gerçekleşti — ön cebin solunda
+    if (m.realized)
+      drawRealizedPill(ctx, ex + 190, by + bh - 150, m.realizedDate);
+    // Şans — ön cebin alt ortasında
+    ctx.textAlign = "center";
+    ctx.font = "600 30px Arial";
+    ctx.fillStyle = c.ink;
+    ctx.fillText(
+      `⭐ ${m.luck.toLocaleString("tr-TR")} kişi şans diledi`,
+      ex + ew / 2,
+      by + bh - 38,
+    );
+  }
+
+  // ── Zarf kodu — altta beyaz pill ──
+  ctx.textAlign = "center";
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.14)";
+  ctx.shadowBlur = 26;
+  ctx.shadowOffsetY = 10;
+  roundRect(ctx, W / 2 - 290, 1112, 580, 138, 69);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  ctx.restore();
+  ctx.font = "700 26px Arial";
+  ctx.fillStyle = "#9a9382";
+  try {
+    ctx.letterSpacing = "8px";
+  } catch {}
+  ctx.fillText("ZARF KODU", W / 2, 1162);
+  try {
+    ctx.letterSpacing = "4px";
+  } catch {}
+  ctx.font = "700 62px 'Courier New', monospace";
+  ctx.fillStyle = "#0369a1";
+  ctx.fillText(m.code, W / 2, 1228);
+  try {
+    ctx.letterSpacing = "0px";
+  } catch {}
+  // Alt not
+  ctx.font = "500 30px Arial";
+  ctx.fillStyle = "#7c7668";
+  ctx.fillText("Bu kodla beni duvarda bul, şans dile ⭐", W / 2, 1316);
+}
+
+// Paylaşım modalı — önizleme + kapalı/açık seçimi + indir / paylaş
+function ShareModal({
+  m,
+  onClose,
+}: {
+  m: MemberManifest;
+  onClose: () => void;
+}) {
+  const [mode, setMode] = useState<"closed" | "open">("closed");
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [canNative, setCanNative] = useState(false);
+
+  useEffect(() => {
+    setCanNative(
+      typeof navigator !== "undefined" &&
+        "share" in navigator &&
+        "canShare" in navigator,
+    );
+  }, []);
+
+  useEffect(() => {
+    if (canvasRef.current) void drawShareImage(canvasRef.current, m, mode);
+  }, [m, mode]);
+
+  function toBlob(): Promise<Blob | null> {
+    return new Promise((res) =>
+      canvasRef.current
+        ? canvasRef.current.toBlob(res, "image/png")
+        : res(null),
+    );
+  }
+
+  async function download() {
+    const b = await toBlob();
+    if (!b) return;
+    const url = URL.createObjectURL(b);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `manifest-${m.code}.png`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Mobilde sistem paylaşım menüsü (Instagram vb.); desteklenmezse indirir
+  async function nativeShare() {
+    const b = await toBlob();
+    if (!b) return;
+    const f = new File([b], `manifest-${m.code}.png`, { type: "image/png" });
+    if (navigator.canShare?.({ files: [f] })) {
+      try {
+        await navigator.share({ files: [f], title: "Manifest Duvarı" });
+      } catch {}
+    } else {
+      download();
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[2100] overflow-y-auto bg-black/40 px-4 py-8"
+      onClick={onClose}
+    >
+      <div
+        className="mx-auto w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3
+          className="text-center text-2xl font-bold text-neutral-800"
+          style={{ fontFamily: "var(--font-caveat)" }}
+        >
+          Manifestini Paylaş
+        </h3>
+        {/* Kapalı (zarf/şişe/kutu) / Açık mektup seçimi */}
+        <div className="mt-4 flex gap-2">
+          {(
+            [
+              ["closed", m.boxed ? "Kutu" : m.bottled ? "Şişe" : "Kapalı Zarf"],
+              [
+                "open",
+                m.boxed ? "Açık Kutu" : m.bottled ? "Açık Şişe" : "Açık Zarf",
+              ],
+            ] as const
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setMode(k)}
+              className={`flex-1 cursor-pointer rounded-full px-3 py-2 text-xs font-semibold transition-colors ${
+                mode === k
+                  ? "bg-neutral-800 text-white"
+                  : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {/* Önizleme — canvas doğrudan gösterilir */}
+        <canvas
+          ref={canvasRef}
+          className="mt-4 w-full rounded-xl shadow-md ring-1 ring-black/5"
+        />
+        <div className="mt-4 flex gap-2.5">
+          <button
+            type="button"
+            onClick={nativeShare}
+            className="flex flex-[2] cursor-pointer items-center justify-center gap-2 rounded-xl bg-sky-500 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-sky-600"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-4 w-4"
+            >
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <line x1="8.59" x2="15.42" y1="13.51" y2="17.49" />
+              <line x1="15.41" x2="8.59" y1="6.51" y2="10.49" />
+            </svg>
+            Paylaş
+          </button>
+          <button
+            type="button"
+            onClick={download}
+            className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white py-2.5 text-sm font-semibold text-neutral-600 transition-colors hover:bg-neutral-50"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-4 w-4"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" x2="12" y1="15" y2="3" />
+            </svg>
+            İndir
+          </button>
+        </div>
+        <p className="mt-2 text-center text-[10px] leading-relaxed text-neutral-400">
+          {canNative
+            ? "Paylaş; sistem menüsünü açar — Instagram story, WhatsApp ve diğerleri buradan seçilir."
+            : "Bu tarayıcı doğrudan paylaşımı desteklemiyor; Paylaş görseli indirir, telefonda sistem menüsü açılır."}
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-2.5 w-full cursor-pointer rounded-xl py-2 text-center text-xs font-medium text-neutral-500 hover:bg-neutral-50"
+        >
+          Kapat
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // Manifest kartı — zarftan çıkan mektupla aynı dil: rumuz el yazısı,
 // manifest metni okunaklı düz font
@@ -92,6 +1069,70 @@ function TagIcon() {
   );
 }
 
+// Başarım kutucuğu ikonları — duvardaki görsellerin minyatür SVG kopyaları
+
+// Şeffaf cam şişe (BottleVisual silüeti: cam gövde + mantar + parlama)
+function MiniBottleIcon({ className = "h-6 w-auto" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 200 520" className={className}>
+      <path
+        d="M82 60 L82 140 C82 162 58 172 50 192 C42 210 40 222 40 242 L40 458 C40 492 62 502 100 502 C138 502 160 492 160 458 L160 242 C160 222 158 210 150 192 C142 172 118 162 118 140 L118 60 Z"
+        fill="#8ec7d8"
+        fillOpacity="0.45"
+        stroke="#5d98ab"
+        strokeOpacity="0.6"
+        strokeWidth="10"
+      />
+      <ellipse cx="100" cy="60" rx="20" ry="6" fill="#cfeaf2" />
+      <rect x="80" y="10" width="40" height="52" rx="10" fill="#a97b47" />
+      <rect x="55" y="215" width="16" height="235" rx="8" fill="#ffffff" opacity="0.5" />
+    </svg>
+  );
+}
+
+// Kraft hediye kutusu (GiftBoxVisual: kahverengi gövde + bordo kurdele + fiyonk)
+function MiniGiftBoxIcon({ className = "h-6 w-auto" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 104 136" className={className}>
+      <rect x="12" y="12" width="88" height="120" rx="7" fill="#8a6f49" />
+      <rect x="2" y="4" width="88" height="120" rx="7" fill="#c6a575" />
+      <rect x="29" y="4" width="13" height="120" fill="#7b1526" />
+      <rect x="2" y="30" width="88" height="13" fill="#7b1526" />
+      <ellipse cx="24" cy="32" rx="11" ry="7" fill="#7b1526" transform="rotate(-24 24 32)" />
+      <ellipse cx="47" cy="32" rx="11" ry="7" fill="#7b1526" transform="rotate(24 47 32)" />
+      <circle cx="35.5" cy="36" r="5" fill="#9e2439" />
+    </svg>
+  );
+}
+
+// Parlak zarf — seçilen özel serinin renginde, cilalı vurgu şeridiyle
+function MiniGlossEnvelopeIcon({
+  base,
+  dark,
+  className = "h-[18px] w-6",
+  outline,
+}: {
+  base: string;
+  dark: string;
+  className?: string;
+  outline?: string; // koyu buton zemininde kenar çizgisi
+}) {
+  return (
+    <svg viewBox="0 0 24 18" className={className}>
+      <rect
+        width="24"
+        height="18"
+        rx="2"
+        fill={base}
+        stroke={outline}
+        strokeWidth={outline ? 1.5 : 0}
+      />
+      <path d="M1 1 H23 L12 10.5 Z" fill={dark} />
+      <path d="M3 18 L11 0 H15 L7 18 Z" fill="#ffffff" opacity="0.22" />
+    </svg>
+  );
+}
+
 function ManifestCard({
   m,
   onRealized,
@@ -100,6 +1141,7 @@ function ManifestCard({
   onPickSpecial,
   onBottle,
   onBox,
+  onShare,
 }: {
   m: MemberManifest;
   onRealized: () => void;
@@ -108,17 +1150,122 @@ function ManifestCard({
   onPickSpecial: () => void;
   onBottle: () => void;
   onBox: () => void;
+  onShare: () => void;
 }) {
   const c = PANEL_COLORS[m.colorIdx % PANEL_COLORS.length];
   // Özel renk seçildiyse kart şeridi ve rozet o renge döner
   const sp = m.special != null ? SPECIAL_COLORS[m.special % SPECIAL_COLORS.length] : null;
+  // Ödül aksiyonları — masaüstünde alt satırın solunda (ss63), mobilde iki
+  // çizgi arasında kendi satırında sağa yaslı (ss64)
+  const hasRewards =
+    (m.luck >= 20 && !m.sticker) ||
+    (m.luck >= 50 && m.special == null) ||
+    (m.luck >= 150 && !m.bottled && !m.boxed) ||
+    (m.luck >= 250 && !m.boxed);
+  const rewardButtons = (
+    <>
+      {/* 20+ şans: sticker hakkı kazanıldı, üye süsünü kendisi seçer.
+          Dolu amber buton + yanıp sönen halka ile dikkat çeker */}
+      {m.luck >= 20 && !m.sticker && (
+        <button
+          type="button"
+          onClick={onPickSticker}
+          className="sticker-pulse flex cursor-pointer items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1 font-semibold text-white transition-colors hover:bg-amber-600"
+        >
+          <TagIcon />
+          Sticker&apos;ını Ekle
+        </button>
+      )}
+      {/* 50+ şans: özel renk hakkı kazanıldı, üye rengini kendisi seçer */}
+      {m.luck >= 50 && m.special == null && (
+        <button
+          type="button"
+          onClick={onPickSpecial}
+          className="special-pulse flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 font-semibold text-[#E5C15C] transition-opacity hover:opacity-90"
+          style={{
+            background: "linear-gradient(135deg, #3d3d3d, #101010 55%, #2c2c2c)",
+          }}
+        >
+          <MiniGlossEnvelopeIcon
+            base="#2c2c2c"
+            dark="#000000"
+            outline="#E5C15C"
+            className="h-3 w-4"
+          />
+          Özel Rengini Seç
+        </button>
+      )}
+      {/* 150+ şans: şişe hakkı kazanıldı, üye onayıyla şişeye konur */}
+      {m.luck >= 150 && !m.bottled && !m.boxed && (
+        <button
+          type="button"
+          onClick={onBottle}
+          className="bottle-pulse flex cursor-pointer items-center gap-1.5 rounded-full bg-[#4c8ba1] px-3 py-1 font-semibold text-white transition-colors hover:bg-[#3f7a8f]"
+        >
+          <MiniBottleIcon className="h-4 w-auto" />
+          Şişeye Koy
+        </button>
+      )}
+      {/* 250+ şans: hediye kutusu hakkı kazanıldı, üye onayıyla
+          kurdeleli hediye kutusuna taşınır */}
+      {m.luck >= 250 && !m.boxed && (
+        <button
+          type="button"
+          onClick={onBox}
+          className="gift-pulse flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 font-semibold text-white transition-opacity hover:opacity-90"
+          style={{
+            background: "linear-gradient(135deg, #d4a94f, #a97e2c)",
+          }}
+        >
+          <MiniGiftBoxIcon className="h-4 w-auto" />
+          Kutuya Koy
+        </button>
+      )}
+    </>
+  );
   return (
     <article
       className="relative overflow-hidden rounded-2xl bg-white shadow-sm transition-shadow hover:shadow-md"
       style={{ borderTop: `6px solid ${sp ? sp.color.base : c.base}` }}
     >
       <div className="p-5">
-        <div className="mb-1 flex flex-wrap items-center gap-2">
+        {/* Üst satır — zarf kodu solda; Paylaş masaüstünde sağ üstte (ss62),
+            mobilde alt aksiyon satırının sol köşesine iner */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="flex items-center gap-2 text-sm text-neutral-400">
+            zarf kodu:
+            <CopyBtn
+              text={m.code}
+              className="rounded-full bg-sky-100 px-3 py-1 text-[15px] font-bold tracking-wide text-sky-700 hover:bg-sky-200"
+            >
+              {m.code}
+            </CopyBtn>
+          </p>
+          <button
+            type="button"
+            onClick={onShare}
+            className="hidden cursor-pointer items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-600 transition-colors hover:bg-sky-100 sm:flex"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-3.5 w-3.5"
+            >
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <line x1="8.59" x2="15.42" y1="13.51" y2="17.49" />
+              <line x1="15.41" x2="8.59" y1="6.51" y2="10.49" />
+            </svg>
+            Paylaş
+          </button>
+        </div>
+        {/* Rumuz + tarih */}
+        <div className="mt-2 flex flex-wrap items-baseline gap-2">
           <span
             className="text-xl leading-none text-neutral-800"
             style={{ fontFamily: "var(--font-caveat)" }}
@@ -126,134 +1273,133 @@ function ManifestCard({
             {m.name}
           </span>
           <span className="text-xs text-neutral-400">{m.date}</span>
-          {/* Seçilen sticker rumuzun yanında görünür */}
-          {m.sticker && (
-            <span
-              className="text-lg leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.15)]"
-              title="Zarfının sticker'ı"
-            >
-              {m.sticker}
-            </span>
-          )}
-          {/* Şişede sergileniyor rozeti — kutuya taşındıysa kutu rozeti */}
-          {m.bottled && !m.boxed && (
-            <span
-              className="rounded-full bg-sky-100 px-2.5 py-0.5 text-[11px] font-semibold text-sky-700"
-              title="Manifest duvarda şişede sergileniyor"
-            >
-              🍾 Şişede
-            </span>
-          )}
-          {m.boxed && (
-            <span
-              className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700"
-              title="Manifest duvarın tepesindeki hediye kutusunda sergileniyor"
-            >
-              🎁 Kutuda
-            </span>
-          )}
-          {/* Seçilen özel renk rozeti */}
-          {sp && (
-            <span
-              className="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
-              style={{ background: sp.color.bodyBg, color: sp.color.ink }}
-              title="Zarfının özel rengi"
-            >
-              {sp.label}
-            </span>
-          )}
-          {m.realized && (
-            <span className="ml-auto flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600">
-              ✓ Gerçekleşti{m.realizedDate ? ` · ${m.realizedDate}` : ""}
-            </span>
-          )}
         </div>
         <p className="mt-2 text-[14px] leading-relaxed text-neutral-700">
           {m.manifest}
         </p>
-        {/* Zarf kodu — metnin altında, tüm kartlarda mavi etiket (ss55) */}
-        <p className="mt-2.5 flex items-center gap-1.5 text-xs text-neutral-400">
-          zarf kodu:
-          <span className="flex items-center gap-1.5 rounded-full bg-sky-100 px-2.5 py-0.5 text-[11px] font-bold text-sky-700">
-            {m.code}
-            <CopyBtn text={m.code} />
-          </span>
-        </p>
+        {/* İstatistikler + başarım kutucukları solda, ödül butonları sağda */}
         <div className="mt-3.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-neutral-500">
           <span title="Şans dileyenler">⭐ {m.luck.toLocaleString("tr-TR")}</span>
           {/* Tebrik yalnızca gerçekleşen manifestte olur */}
           {m.realized && (
             <span title="Tebrikler">👏 {m.cheers.toLocaleString("tr-TR")}</span>
           )}
-          <span title="Görüntülenme">👁️ {m.views.toLocaleString("tr-TR")}</span>
-          <span className="ml-auto flex items-center gap-2">
-            {/* 20+ şans: sticker hakkı kazanıldı, üye süsünü kendisi seçer.
-                Dolu amber buton + yanıp sönen halka ile dikkat çeker */}
-            {m.luck >= 20 && !m.sticker && (
-              <button
-                type="button"
-                onClick={onPickSticker}
-                className="sticker-pulse flex cursor-pointer items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1 font-semibold text-white transition-colors hover:bg-amber-600"
-              >
-                <TagIcon />
-                Sticker&apos;ını Ekle
-              </button>
-            )}
-            {/* 50+ şans: özel renk hakkı kazanıldı, üye rengini kendisi seçer */}
-            {m.luck >= 50 && m.special == null && (
-              <button
-                type="button"
-                onClick={onPickSpecial}
-                className="special-pulse cursor-pointer rounded-full px-3 py-1 font-semibold text-[#E5C15C] transition-opacity hover:opacity-90"
-                style={{
-                  background:
-                    "linear-gradient(135deg, #3d3d3d, #101010 55%, #2c2c2c)",
-                }}
-              >
-                🎨 Özel Rengini Seç
-              </button>
-            )}
-            {/* 150+ şans: şişe hakkı kazanıldı, üye onayıyla şişeye konur */}
-            {m.luck >= 150 && !m.bottled && !m.boxed && (
-              <button
-                type="button"
-                onClick={onBottle}
-                className="bottle-pulse cursor-pointer rounded-full bg-[#4c8ba1] px-3 py-1 font-semibold text-white transition-colors hover:bg-[#3f7a8f]"
-              >
-                🍾 Şişeye Koy
-              </button>
-            )}
-            {/* 250+ şans: hediye kutusu hakkı kazanıldı, üye onayıyla
-                duvarın tepesindeki kurdeleli kutuya taşınır */}
-            {m.luck >= 250 && !m.boxed && (
-              <button
-                type="button"
-                onClick={onBox}
-                className="gift-pulse cursor-pointer rounded-full px-3 py-1 font-semibold text-white transition-opacity hover:opacity-90"
-                style={{
-                  background: "linear-gradient(135deg, #d4a94f, #a97e2c)",
-                }}
-              >
-                🎁 Kutuya Koy
-              </button>
-            )}
-            {!m.realized && (
-              <button
-                type="button"
-                onClick={onRealized}
-                className="cursor-pointer rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-medium text-emerald-600 transition-colors hover:bg-emerald-100"
-              >
-                Gerçekleşti mi?
-              </button>
-            )}
+          <span className="flex items-center gap-1" title="Görüntülenme">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-3.5 w-3.5"
+            >
+              <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+            {m.views.toLocaleString("tr-TR")}
+          </span>
+          {/* Başarımlar — kazanılan ödüller küçük kutucuklar halinde */}
+          {(m.sticker || sp || m.bottled || m.boxed) && (
+            <span className="flex items-center gap-1.5">
+              {m.sticker && (
+                <span
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-base leading-none"
+                  title={`Zarfının sticker'ı${
+                    STICKERS.find((s) => s.emoji === m.sticker)
+                      ? `: ${STICKERS.find((s) => s.emoji === m.sticker)!.label}`
+                      : ""
+                  }`}
+                >
+                  {m.sticker}
+                </span>
+              )}
+              {sp && (
+                <span
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50"
+                  title={`Özel rengin: ${sp.label}`}
+                >
+                  <MiniGlossEnvelopeIcon
+                    base={sp.color.base}
+                    dark={sp.color.dark}
+                  />
+                </span>
+              )}
+              {m.bottled && !m.boxed && (
+                <span
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-sky-200 bg-sky-50"
+                  title="Manifest duvarda şişede sergileniyor"
+                >
+                  <MiniBottleIcon />
+                </span>
+              )}
+              {m.boxed && (
+                <span
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50"
+                  title="Manifest duvarda hediye kutusunda sergileniyor"
+                >
+                  <MiniGiftBoxIcon />
+                </span>
+              )}
+            </span>
+          )}
+        </div>
+        {/* Mobil: ödül aksiyonları iki çizgi arasında kendi satırında,
+            sağa yaslı (ss64) */}
+        {hasRewards && (
+          <div className="mt-3.5 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-100 pt-3 text-xs sm:hidden">
+            {rewardButtons}
+          </div>
+        )}
+        {/* Ayraç + alt satır: masaüstünde solda ödül aksiyonları (ss63),
+            mobilde solda Paylaş; sağda Gerçekleşti mi? / Sil */}
+        <div className="mt-3.5 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-100 pt-3 text-xs">
+          <span className="mr-auto hidden flex-wrap items-center gap-2 sm:flex">
+            {rewardButtons}
+          </span>
+          <button
+            type="button"
+            onClick={onShare}
+            className="mr-auto flex cursor-pointer items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-[11px] font-medium text-sky-600 transition-colors hover:bg-sky-100 sm:hidden"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-3 w-3"
+            >
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <line x1="8.59" x2="15.42" y1="13.51" y2="17.49" />
+              <line x1="15.41" x2="8.59" y1="6.51" y2="10.49" />
+            </svg>
+            Paylaş
+          </button>
+          {m.realized && (
+            <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600">
+              ✓ Gerçekleşti{m.realizedDate ? ` · ${m.realizedDate}` : ""}
+            </span>
+          )}
+          {!m.realized && (
             <button
               type="button"
-              onClick={onDelete}
-              className="cursor-pointer rounded-full border border-red-200 bg-red-50 px-3 py-1 font-medium text-red-500 transition-colors hover:bg-red-100"
+              onClick={onRealized}
+              className="cursor-pointer rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-medium text-emerald-600 transition-colors hover:bg-emerald-100 sm:px-3 sm:py-1 sm:text-xs"
             >
-              Sil
+              Gerçekleşti mi?
             </button>
-          </span>
+          )}
+          <button
+            type="button"
+            onClick={onDelete}
+            className="cursor-pointer rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-medium text-red-500 transition-colors hover:bg-red-100 sm:px-3 sm:py-1 sm:text-xs"
+          >
+            Sil
+          </button>
         </div>
       </div>
     </article>
@@ -316,6 +1462,14 @@ export default function PanelPage() {
   );
   // Hediye kutusuna koyma onayı (250+ şans hakkı) — önizleme + onay
   const [pendingBox, setPendingBox] = useState<MemberManifest | null>(null);
+  // Paylaşım modalı — manifest için görsel üretilir (açık/kapalı zarf)
+  const [shareFor, setShareFor] = useState<MemberManifest | null>(null);
+  // Ödül adımları sırayla açılır: sticker → özel renk → şişe → kutu.
+  // Sıradaki adım atlanmak istenirse bu modal yönlendirir
+  const [stepGate, setStepGate] = useState<{
+    m: MemberManifest;
+    needed: RewardStep;
+  } | null>(null);
 
   // Ayarlar
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -375,6 +1529,21 @@ export default function PanelPage() {
     }, 900);
   }
 
+  // Ödül adımının popup'ını açar; sırada tamamlanmamış daha erken bir adım
+  // varsa açmak yerine yönlendirme modalı gösterilir (sticker → renk →
+  // şişe → kutu sırası atlanamaz)
+  function openStep(m: MemberManifest, step: RewardStep) {
+    const first = firstPendingStep(m);
+    if (first && STEP_ORDER.indexOf(first) < STEP_ORDER.indexOf(step)) {
+      setStepGate({ m, needed: first });
+      return;
+    }
+    if (step === "sticker") setPickFor(m);
+    else if (step === "special") setPickColorFor(m);
+    else if (step === "bottle") setPendingBottle(m);
+    else setPendingBox(m);
+  }
+
   // Seçilen sticker'ı manifeste yapıştırır — duvardaki zarfa/şişeye yansır
   function setSticker(code: string, emoji: string) {
     update((u) => {
@@ -402,7 +1571,7 @@ export default function PanelPage() {
     setPendingBottle(null);
   }
 
-  // Manifesti hediye kutusuna taşır — duvarın tepesindeki kutuda sergilenir
+  // Manifesti hediye kutusuna taşır — duvarda kurdeleli kutuda sergilenir
   function setBoxed(code: string) {
     update((u) => {
       const m = u.manifests.find((x) => x.code === code);
@@ -532,14 +1701,35 @@ export default function PanelPage() {
                 setSetErrMsg("");
                 setSetOk("");
               }}
-              className="ml-auto cursor-pointer rounded-xl border border-neutral-200 bg-white px-4 py-2 text-xs font-semibold text-neutral-600 transition-colors hover:bg-neutral-50"
+              className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-4 py-2 text-xs font-semibold text-neutral-600 transition-colors hover:bg-neutral-50"
             >
-              ⚙️ Hesap Ayarları
+              Hesap Ayarları
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`h-4 w-4 transition-transform duration-200 ${
+                  settingsOpen ? "rotate-180" : ""
+                }`}
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
             </button>
           </div>
 
-          {/* Ayarlar — profil kartının altında açılır */}
-          {settingsOpen && (
+          {/* Ayarlar — profil kartının altında yumuşak açılır/kapanır
+              (grid-rows 0fr→1fr yükseklik animasyonu) */}
+          <div
+            className={`grid transition-[grid-template-rows,opacity] duration-300 ease-in-out ${
+              settingsOpen
+                ? "grid-rows-[1fr] opacity-100"
+                : "grid-rows-[0fr] opacity-0"
+            }`}
+          >
+            <div className="overflow-hidden">
             <form
               onSubmit={saveSettings}
               className="space-y-4 border-t border-neutral-100 bg-neutral-50/60 p-6"
@@ -610,32 +1800,34 @@ export default function PanelPage() {
                 </button>
               </div>
             </form>
-          )}
+            </div>
+          </div>
         </section>
 
-        {/* Sekmeler: Manifestlerim / Başarımlar */}
-        <div className="mt-8 flex gap-2">
+        {/* Sekmeler: Manifestlerim / Başarımlar — mobilde satırı eşit bölen
+            iki buton (kenarlardan hafif boşluklu), masaüstünde içerik kadar */}
+        <div className="mt-8 flex gap-2 px-2 sm:px-0">
           <button
             type="button"
             onClick={() => setTab("manifests")}
-            className={`cursor-pointer rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+            className={`flex-1 cursor-pointer rounded-full px-4 py-2 text-center text-sm font-semibold transition-colors sm:flex-none ${
               tab === "manifests"
                 ? "bg-neutral-800 text-white"
                 : "bg-white text-neutral-500 shadow-sm hover:bg-neutral-50"
             }`}
           >
-            💌 Manifestlerim
+            Manifestlerim
           </button>
           <button
             type="button"
             onClick={() => setTab("achievements")}
-            className={`cursor-pointer rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+            className={`flex-1 cursor-pointer rounded-full px-4 py-2 text-center text-sm font-semibold transition-colors sm:flex-none ${
               tab === "achievements"
                 ? "bg-neutral-800 text-white"
                 : "bg-white text-neutral-500 shadow-sm hover:bg-neutral-50"
             }`}
           >
-            🏆 Başarımlar
+            Başarımlar
           </button>
         </div>
 
@@ -662,9 +1854,21 @@ export default function PanelPage() {
               type="button"
               onClick={openWrite}
               disabled={quotaLeft === 0}
-              className="ml-auto cursor-pointer rounded-full bg-neutral-800 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-neutral-700 active:scale-[0.98] disabled:cursor-default disabled:opacity-40"
+              className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-neutral-800 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-neutral-700 active:scale-[0.98] disabled:cursor-default disabled:opacity-40"
             >
-              ✍️ Yeni Manifest Yaz
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-3.5 w-3.5"
+              >
+                <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+                <path d="m15 5 4 4" />
+              </svg>
+              Yeni Manifest Yaz
             </button>
           </div>
 
@@ -689,10 +1893,11 @@ export default function PanelPage() {
                   m={m}
                   onRealized={() => setConfirmRealized(m)}
                   onDelete={() => setConfirmDel(m)}
-                  onPickSticker={() => setPickFor(m)}
-                  onPickSpecial={() => setPickColorFor(m)}
-                  onBottle={() => setPendingBottle(m)}
-                  onBox={() => setPendingBox(m)}
+                  onPickSticker={() => openStep(m, "sticker")}
+                  onPickSpecial={() => openStep(m, "special")}
+                  onBottle={() => openStep(m, "bottle")}
+                  onBox={() => openStep(m, "box")}
+                  onShare={() => setShareFor(m)}
                 />
               ))}
             </div>
@@ -810,7 +2015,7 @@ export default function PanelPage() {
                       </div>
                     )}
                   </div>
-                  <p className="mt-3 text-xs leading-relaxed text-neutral-500">
+                  <p className="mt-3 text-center text-xs leading-relaxed text-neutral-800">
                     {s.desc}
                   </p>
                   {/* Manifest ilerlemeleri — her manifest kod olarak, bu
@@ -938,20 +2143,20 @@ export default function PanelPage() {
                   }}
                 >
                   <div className="rounded-[4px] bg-[#fffdf5] px-8 py-7 shadow-[0_16px_44px_rgba(0,0,0,0.35)] max-[520px]:px-5 max-[520px]:py-5">
-                    {/* Rumuz — mektubun başlığına yazılır (maks 25 karakter),
+                    {/* Rumuz — mektubun başlığına yazılır (maks 20 karakter),
                         modal açılınca imleç burada başlar */}
                     <div className="flex items-end gap-2">
                       <input
                         value={draftName}
                         onChange={(e) =>
-                          setDraftName(e.target.value.slice(0, 25))
+                          setDraftName(e.target.value.slice(0, 20))
                         }
                         autoFocus
                         placeholder="Rumuzun…"
                         className="w-full bg-transparent font-hand text-[26px] text-neutral-800 outline-none placeholder:text-neutral-300 max-[520px]:text-[22px]"
                       />
                       <span className="shrink-0 pb-1 text-[10px] text-neutral-300">
-                        {draftName.length}/25
+                        {draftName.length}/20
                       </span>
                     </div>
                     {/* Kod — sağda tek başına ("Manifest" etiketi yok) */}
@@ -1032,13 +2237,87 @@ export default function PanelPage() {
                   }
                   className="flex-1 cursor-pointer rounded-xl bg-white py-2.5 text-sm font-semibold text-neutral-800 transition-colors hover:bg-neutral-100 disabled:cursor-default disabled:opacity-50"
                 >
-                  Duvara As 💌
+                  Duvara As
                 </button>
               </div>
             </div>
           </div>
           );
         })()}
+
+        {/* ── Paylaşım modalı — görsel üret, indir / paylaş ── */}
+        {shareFor && (
+          <ShareModal m={shareFor} onClose={() => setShareFor(null)} />
+        )}
+
+        {/* ── Adım sırası yönlendirmesi — atlanmak istenen adımdan önce
+            tamamlanması gereken adımı gösterir ── */}
+        {stepGate && (
+          <div
+            className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/40 px-4"
+            onClick={() => setStepGate(null)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-bold text-neutral-800">
+                Sırayla ilerlemelisin
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-neutral-500">
+                {stepGate.needed === "sticker" && (
+                  <>
+                    Bu adıma geçmeden önce{" "}
+                    <b className="text-neutral-700">
+                      zarfının sticker&apos;ını seçmelisin
+                    </b>
+                    . Ödüller kazanıldıkları sırayla kullanılır.
+                  </>
+                )}
+                {stepGate.needed === "special" && (
+                  <>
+                    Bu adıma geçmeden önce{" "}
+                    <b className="text-neutral-700">
+                      parlak zarfının rengini seçmelisin
+                    </b>
+                    . Ödüller kazanıldıkları sırayla kullanılır.
+                  </>
+                )}
+                {stepGate.needed === "bottle" && (
+                  <>
+                    Bu adıma geçmeden önce{" "}
+                    <b className="text-neutral-700">
+                      manifestini şişeye koymalısın
+                    </b>
+                    . Ödüller kazanıldıkları sırayla kullanılır.
+                  </>
+                )}
+              </p>
+              <div className="mt-5 flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setStepGate(null)}
+                  className="flex-1 cursor-pointer rounded-xl border border-neutral-200 py-2.5 text-sm font-medium text-neutral-500 transition-colors hover:bg-neutral-50"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const g = stepGate;
+                    setStepGate(null);
+                    openStep(g.m, g.needed);
+                  }}
+                  className="flex-1 cursor-pointer rounded-xl bg-neutral-800 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-neutral-700"
+                >
+                  {stepGate.needed === "sticker" && "Sticker'ını Seç"}
+                  {stepGate.needed === "special" && "Rengini Seç"}
+                  {stepGate.needed === "bottle" && "Şişeye Koy"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Sticker seçme popup'ı — 20+ şans hakkı ── */}
         {pickFor && (
@@ -1106,16 +2385,11 @@ export default function PanelPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <h3
-                className="text-2xl font-bold text-neutral-800"
+                className="mb-4 text-center text-2xl font-bold text-neutral-800"
                 style={{ fontFamily: "var(--font-caveat)" }}
               >
-                Özel Rengini Seç 🎨
+                Özel Rengini Seç
               </h3>
-              <p className="mb-4 mt-0.5 text-xs leading-relaxed text-neutral-400">
-                <b className="text-neutral-600">{pickColorFor.code}</b> kodlu
-                manifestin 50 şans barajını geçti. Zarfın duvarda kendini belli
-                eden özel seri renklerden birine bürünecek. Rengini seç.
-              </p>
               <div className="grid grid-cols-2 gap-3">
                 {SPECIAL_COLORS.map((s, idx) => (
                   <button
@@ -1354,7 +2628,7 @@ export default function PanelPage() {
               </h3>
               <p className="mt-0.5 text-xs leading-relaxed text-neutral-400">
                 <b className="text-neutral-600">{pendingBox.code}</b> kodlu
-                manifestin 250 şans barajını geçti. Duvarın tepesinde böyle
+                manifestin 250 şans barajını geçti. Duvarda böyle
                 sergilenecek:
               </p>
               {/* Kutu önizlemesi — duvardaki kurdeleli kutunun birebir görseli */}
@@ -1373,7 +2647,7 @@ export default function PanelPage() {
               </div>
               <p className="mt-3 text-sm leading-relaxed text-neutral-500">
                 Manifest {pendingBox.bottled ? "şişeden çıkıp" : "zarftan çıkıp"}{" "}
-                duvarın tepesindeki kurdeleli hediye kutusunda sergilenecek.{" "}
+                duvarda kurdeleli hediye kutusunda sergilenecek.{" "}
                 <b className="text-red-500">Bu işlem geri alınamaz.</b>
               </p>
               <div className="mt-5 flex gap-2.5">

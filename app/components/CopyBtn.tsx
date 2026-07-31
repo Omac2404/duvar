@@ -8,9 +8,13 @@ import { useState } from "react";
 export default function CopyBtn({
   text,
   className = "",
+  children,
 }: {
   text: string;
   className?: string;
+  // Verilirse butonun içinde kodun kendisi de görünür: metnin herhangi bir
+  // yerine basmak kopyalar (renkler className'den gelir)
+  children?: React.ReactNode;
 }) {
   const [ok, setOk] = useState(false);
   return (
@@ -23,13 +27,26 @@ export default function CopyBtn({
         try {
           await navigator.clipboard.writeText(text);
           setOk(true);
-          setTimeout(() => setOk(false), 1200);
+          setTimeout(() => setOk(false), 2000);
         } catch {
           // pano izni yoksa sessiz geç (demo)
         }
       }}
-      className={`inline-flex cursor-pointer items-center text-neutral-400 transition-colors hover:text-neutral-600 ${className}`}
+      className={`relative inline-flex cursor-pointer items-center gap-1.5 transition-colors ${
+        children ? "" : "text-neutral-400 hover:text-neutral-600"
+      } ${className}`}
     >
+      {/* Kopyalandı balonu — butonun altında 2 sn görünüp kaybolur
+          (üstte açılınca kartların overflow-hidden kenarında kırpılıyordu) */}
+      {ok && (
+        <span className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2">
+          <span className="report-pop block whitespace-nowrap rounded-md bg-neutral-800 px-2 py-1 text-[10px] font-medium normal-case tracking-normal text-white shadow-md">
+            Kopyalandı
+            <span className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-neutral-800" />
+          </span>
+        </span>
+      )}
+      {children}
       {ok ? (
         <svg
           viewBox="0 0 24 24"

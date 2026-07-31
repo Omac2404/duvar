@@ -109,6 +109,26 @@ body {
   animation: wish-bounce 0.55s ease-in-out infinite;
 }
 
+/* Bildir — seçenek pill'leri butondan fışkırır gibi sırayla belirir */
+@keyframes report-pop {
+  0% {
+    transform: translateY(8px) scale(0.3);
+    opacity: 0;
+  }
+  70% {
+    transform: translateY(-2px) scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.report-pop {
+  animation: report-pop 0.28s cubic-bezier(0.3, 1.4, 0.4, 1) both;
+}
+
 /* Şans dile — basınca "yaşasın!" sevinç sallanması */
 @keyframes wish-yay {
   0% {

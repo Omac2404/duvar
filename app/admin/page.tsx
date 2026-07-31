@@ -23,7 +23,15 @@ import {
   type MemberManifest,
   type User,
 } from "../lib/auth";
-import { ADS_KEY, buildEnvelopes, TEST_KEY, TOTAL } from "../lib/wallData";
+import {
+  ADS_KEY,
+  buildEnvelopes,
+  getReports,
+  removeReport,
+  TEST_KEY,
+  TOTAL,
+  type Report,
+} from "../lib/wallData";
 
 const inputCls =
   "w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm " +
@@ -213,9 +221,12 @@ const PRESETS: { label: string; patch: Partial<Form> }[] = [
 export default function AdminPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [ready, setReady] = useState(false);
-  const [tab, setTab] = useState<"overview" | "members" | "manifests" | "demo">(
-    "overview",
-  );
+  const [tab, setTab] = useState<
+    "overview" | "members" | "manifests" | "demo" | "reports"
+  >("overview");
+
+  // Ziyaretçi bildirimleri (şikâyetler) — duvar popup'larından gelir
+  const [reports, setReports] = useState<Report[]>([]);
 
   // Reklam alanları + test modu bayrakları (duvar sayfası bunları okur)
   const [ads, setAds] = useState(false);
@@ -227,6 +238,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     setUsers(getUsers());
+    setReports(getReports());
     setAds(localStorage.getItem(ADS_KEY) === "1");
     setTestMode(localStorage.getItem(TEST_KEY) === "1");
     setReady(true);
@@ -465,6 +477,7 @@ export default function AdminPage() {
     { key: "members", label: `👥 Üyeler (${users.length})` },
     { key: "manifests", label: `💌 Üye Manifestleri (${allManifests.length})` },
     { key: "demo", label: `🧪 Demo Manifestler (${TOTAL})` },
+    { key: "reports", label: `🚩 Bildirilenler (${reports.length})` },
   ] as const;
 
   return (
@@ -986,6 +999,78 @@ export default function AdminPage() {
             </div>
           </div>
         )}
+
+        {/* ── Bildirilenler — duvardan gelen şikâyetler ── */}
+        {tab === "reports" && (
+          <div className="mt-5 space-y-4">
+            <p className="rounded-xl bg-red-50 px-4 py-2.5 text-xs leading-relaxed text-red-700">
+              Ziyaretçilerin duvar popup&apos;larındaki &quot;Bildir&quot;
+              butonuyla işaretlediği manifestler. Kaldır, yalnızca bildirimi
+              siler; manifest duvarda kalır.
+            </p>
+            {reports.length === 0 ? (
+              <section className="rounded-2xl bg-white p-10 text-center text-sm text-neutral-400 shadow-sm">
+                Henüz bildirilen manifest yok. 🎉
+              </section>
+            ) : (
+              <section className="overflow-x-auto rounded-2xl bg-white shadow-sm">
+                <table className="w-full min-w-[700px] border-collapse">
+                  <thead className="border-b border-neutral-100">
+                    <tr>
+                      <th className={thCls}>Sebep</th>
+                      <th className={thCls}>Kod</th>
+                      <th className={thCls}>Rumuz</th>
+                      <th className={thCls}>Manifest</th>
+                      <th className={thCls}>Tarih</th>
+                      <th className={thCls}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reports.map((r) => (
+                      <tr
+                        key={`${r.code}-${r.ts}`}
+                        className="border-b border-neutral-50 last:border-0 hover:bg-neutral-50/60"
+                      >
+                        <td className={tdCls}>
+                          <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-600">
+                            {r.reason}
+                          </span>
+                        </td>
+                        <td className={`${tdCls} whitespace-nowrap`}>
+                          <span className="flex items-center gap-1 font-mono text-xs font-bold text-sky-700">
+                            {r.code}
+                            <CopyBtn text={r.code} />
+                          </span>
+                        </td>
+                        <td className={`${tdCls} font-semibold`}>{r.name}</td>
+                        <td className={`${tdCls} max-w-[280px]`}>
+                          <span className="line-clamp-2 text-xs text-neutral-500">
+                            {r.manifest}
+                          </span>
+                        </td>
+                        <td className={`${tdCls} whitespace-nowrap text-xs`}>
+                          {r.date}
+                        </td>
+                        <td className={`${tdCls} text-right`}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              removeReport(r.code, r.ts);
+                              setReports(getReports());
+                            }}
+                            className="cursor-pointer rounded-full border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-500 transition-colors hover:border-red-300 hover:text-red-500"
+                          >
+                            Kaldır
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Manifest editörü — tanımla / düzenle ── */}
@@ -1057,7 +1142,7 @@ export default function AdminPage() {
                 </span>
                 <input
                   value={form.name}
-                  onChange={(e) => patch({ name: e.target.value.slice(0, 25) })}
+                  onChange={(e) => patch({ name: e.target.value.slice(0, 20) })}
                   placeholder="Zarfın üstündeki isim"
                   className={inputCls}
                 />
