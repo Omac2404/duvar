@@ -171,8 +171,8 @@ function drawBottle(
     noteOut?: boolean;
   },
 ) {
-  // Varsayılan: kapalı sahnenin dik şişesi (viewBox 200×520 → ~250×650)
-  const { cx = 540, cy = 625, s = 1.25, rot = 0, noteOut = false } =
+  // Varsayılan: kapalı sahnenin dik şişesi (viewBox 200×520 → ~310×806)
+  const { cx = 540, cy = 665, s = 1.55, rot = 0, noteOut = false } =
     opts ?? {};
   ctx.save();
   ctx.translate(cx, cy);
@@ -356,10 +356,10 @@ function drawGiftBox(
     rot?: number; // savrulmuş kapak açısı
   },
 ) {
-  const w = opts?.w ?? 380;
+  const w = opts?.w ?? 460;
   const h = w * 1.32;
-  const x = opts?.x ?? 540 - w / 2 - 24; // etiket sağa taştığı için hafif sola
-  const y = opts?.y ?? 350;
+  const x = opts?.x ?? 540 - w / 2;
+  const y = opts?.y ?? 330;
   const u = w / 150;
   const { depth = true, glow = true, rot = 0 } = opts ?? {};
 
@@ -486,7 +486,7 @@ function drawGiftBox(
 
   // Kağıt etiket — sağ kenarda dikine (-90°): ⭐ şans (+👏 tebrik) + rumuz
   ctx.save();
-  ctx.translate(x + w - 12 * u, y + h - 62 * u);
+  ctx.translate(x + w - 30 * u, y + h - 62 * u);
   ctx.rotate((-90 * Math.PI) / 180);
   roundRect(ctx, -58 * u, -22 * u, 116 * u, 44 * u, 3);
   ctx.fillStyle = "#f5ecd4";
@@ -526,6 +526,7 @@ function drawLetter(
   y: number,
   w: number,
   h: number,
+  showSticker = true,
 ) {
   ctx.save();
   ctx.shadowColor = "rgba(0,0,0,0.3)";
@@ -555,7 +556,7 @@ function drawLetter(
     ctx.fillText(last ? `${ln}…` : ln, x + 50, y + 164 + i * 48);
   });
   // Sticker — normalde durduğu köşede: kağıdın sağ altında, hafif eğik
-  if (m.sticker) {
+  if (m.sticker && showSticker) {
     ctx.save();
     ctx.translate(x + w - 78, y + h - 72);
     ctx.rotate((-10 * Math.PI) / 180);
@@ -627,7 +628,7 @@ async function drawShareImage(
     m.boxed
       ? "manifestim duvarda hediye kutusunda 🎁"
       : m.bottled
-        ? "manifestim duvarda şişede 🍾"
+        ? "manifestim duvarda şişede"
         : "manifestim duvarda asılı ✨",
     W / 2,
     218,
@@ -690,29 +691,27 @@ async function drawShareImage(
       ey + eh + 92,
     );
   } else if (m.boxed) {
-    // ── Açık kutu — popup animasyonunun son karesi: kapak sol üste
-    // savrulmuş (mektubun üstüne biner), açık gövde altın ışıkla dolu,
-    // mektup içinden yükselir ──
-    const bw = 360;
-    const bh = bw * 1.32; // ~475
-    const bx = 540 - bw / 2;
-    const byy = 620;
+    // ── Açık kutu — kağıt ortada ve önde; üst kapak sol kenardan,
+    // açık gövde sağ alt köşeden kağıdın altından eğik taşar ──
+    const bw = 300;
+    const bh = bw * 1.32; // ~396
+    const bx = 660;
+    const byy = 640;
     const bu = bw / 150;
-    // Altın hale — kutunun çevresinde
-    const halo = ctx.createRadialGradient(
-      540,
-      byy + bh / 2,
-      40,
-      540,
-      byy + bh / 2,
-      420,
-    );
+    const bcx = bx + bw / 2;
+    const bcy = byy + bh / 2;
+    // Altın hale — kağıdın çevresinde
+    const halo = ctx.createRadialGradient(540, 660, 40, 540, 660, 420);
     halo.addColorStop(0, "rgba(255,233,168,0.8)");
     halo.addColorStop(0.55, "rgba(255,215,106,0.3)");
     halo.addColorStop(1, "rgba(255,215,106,0)");
     ctx.fillStyle = halo;
-    ctx.fillRect(120, byy - 320, 840, 840);
-    // Karton kalınlığı + açık gövde çerçevesi
+    ctx.fillRect(120, 240, 840, 840);
+    // Gövde — kağıdın altında sağa yatık; sağ alt köşeden görünür
+    ctx.save();
+    ctx.translate(bcx, bcy);
+    ctx.rotate((18 * Math.PI) / 180);
+    ctx.translate(-bcx, -bcy);
     roundRect(ctx, bx + 8 * bu, byy + 8 * bu, bw, bh, 5 * bu);
     ctx.fillStyle = "#8a6f49";
     ctx.fill();
@@ -724,53 +723,41 @@ async function drawShareImage(
     ctx.fillStyle = "#a98b5c";
     ctx.fill();
     ctx.restore();
-    // Kutunun içi — karanlık zemin, kapak kalkınca altın ışıkla dolar
+    // Kutunun içi — sade karanlık zemin (parlama efekti yok)
     roundRect(ctx, bx + 13 * bu, byy + 13 * bu, bw - 26 * bu, bh - 26 * bu, 12);
     ctx.fillStyle = "#4a3a22";
     ctx.fill();
-    const inner = ctx.createRadialGradient(
-      540,
-      byy + bh * 0.45,
-      10,
-      540,
-      byy + bh * 0.45,
-      bw * 0.62,
-    );
-    inner.addColorStop(0, "#ffe9a0");
-    inner.addColorStop(0.45, "#d89a52");
-    inner.addColorStop(0.85, "rgba(74,58,34,0)");
-    roundRect(ctx, bx + 13 * bu, byy + 13 * bu, bw - 26 * bu, bh - 26 * bu, 12);
-    ctx.fillStyle = inner;
-    ctx.fill();
-    // Mektup — kutunun içinden yükselir, kağıdın altı gövdenin önünde
-    drawLetter(ctx, m, hand, 230, 400, 620, 640);
-    // Kapak — sol üste savrulmuş, hafif eğik; mektubun üstüne biner
+    ctx.restore();
+    // Mektup — gövde kağıdın altından taşar; sticker kapakta zaten var
+    drawLetter(ctx, m, hand, 230, 340, 620, 640, false);
+    // Kapak — kağıdın üstüne biner, sola yatık; önde olduğu için büyük
     drawGiftBox(ctx, m, hand, {
-      w: 260,
-      x: 100,
-      y: 470,
+      w: 350,
+      x: 85,
+      y: 570,
       depth: false,
       glow: false,
-      rot: (-15 * Math.PI) / 180,
+      rot: (-25 * Math.PI) / 180,
     });
     // Kutudan yükselen ışıltılar
     ctx.textAlign = "center";
     ctx.globalAlpha = 0.9;
     ctx.font = "34px 'Segoe UI Emoji', serif";
-    ctx.fillText("✨", 262, 370);
+    ctx.fillText("✨", 262, 300);
     ctx.font = "28px 'Segoe UI Emoji', serif";
-    ctx.fillText("⭐", 880, 470);
+    ctx.fillText("⭐", 920, 440);
     ctx.font = "26px 'Segoe UI Emoji', serif";
-    ctx.fillText("✦", 840, 380);
+    ctx.fillText("✦", 870, 320);
     ctx.globalAlpha = 1;
   } else if (m.bottled) {
     // ── Açık şişe — popup son karesi: şişe yatmış, mantar fırlamış
     // havada, not aşağıda açılmış; şişe mektubun üstüne hafifçe biner ──
-    drawLetter(ctx, m, hand, 230, 460, 620, 590);
+    // Sticker şişenin üstünde zaten var — kağıtta tekrar çizilmez
+    drawLetter(ctx, m, hand, 230, 460, 620, 590, false);
     drawBottle(ctx, m, hand, {
-      cx: 520,
-      cy: 360,
-      s: 1.1,
+      cx: 470,
+      cy: 350,
+      s: 1.45,
       rot: (105 * Math.PI) / 180,
       noteOut: true,
     });
@@ -885,7 +872,7 @@ async function drawShareImage(
   // Alt not
   ctx.font = "500 30px Arial";
   ctx.fillStyle = "#7c7668";
-  ctx.fillText("Bu kodla beni duvarda bul, şans dile ⭐", W / 2, 1316);
+  ctx.fillText("Bu kodla beni duvarda bulabilirsin ⭐", W / 2, 1316);
 }
 
 // Paylaşım modalı — önizleme + kapalı/açık seçimi + indir / paylaş
@@ -1834,7 +1821,8 @@ export default function PanelPage() {
         {/* Manifestlerim */}
         {tab === "manifests" && (
         <section className="mt-5">
-          <div className="mb-3.5 flex flex-wrap items-center gap-3">
+          {/* Mobilde başlık ortalı, hak rozeti hemen altında, buton en altta */}
+          <div className="mb-3.5 flex flex-wrap items-center gap-3 max-[520px]:flex-col max-[520px]:gap-2">
             <h2
               className="text-2xl font-bold text-neutral-800"
               style={{ fontFamily: "var(--font-caveat)" }}
@@ -1854,7 +1842,7 @@ export default function PanelPage() {
               type="button"
               onClick={openWrite}
               disabled={quotaLeft === 0}
-              className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-neutral-800 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-neutral-700 active:scale-[0.98] disabled:cursor-default disabled:opacity-40"
+              className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-neutral-800 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-neutral-700 active:scale-[0.98] disabled:cursor-default disabled:opacity-40 max-[520px]:ml-0 max-[520px]:mt-1"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -2330,12 +2318,12 @@ export default function PanelPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <h3
-                className="text-2xl font-bold text-neutral-800"
+                className="text-center text-2xl font-bold text-neutral-800"
                 style={{ fontFamily: "var(--font-caveat)" }}
               >
-                Sticker&apos;ını Seç 🏷️
+                Sticker&apos;ını Seç
               </h3>
-              <p className="mb-4 mt-0.5 text-xs leading-relaxed text-neutral-400">
+              <p className="mb-4 mt-0.5 text-center text-xs leading-relaxed text-neutral-400">
                 <b className="text-neutral-600">{pickFor.code}</b> kodlu
                 manifestin 20 şans barajını geçti. Manifest türüne uygun süsü
                 seç, zarfının kapağına yapıştıralım.
@@ -2550,12 +2538,12 @@ export default function PanelPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <h3
-                className="text-2xl font-bold text-neutral-800"
+                className="text-center text-2xl font-bold text-neutral-800"
                 style={{ fontFamily: "var(--font-caveat)" }}
               >
-                Şişeye Koy 🍾
+                Şişeye Koy
               </h3>
-              <p className="mt-0.5 text-xs leading-relaxed text-neutral-400">
+              <p className="mt-0.5 text-center text-xs leading-relaxed text-neutral-400">
                 <b className="text-neutral-600">{pendingBottle.code}</b> kodlu
                 manifestin 150 şans barajını geçti. Duvarda böyle
                 sergilenecek:
@@ -2621,12 +2609,12 @@ export default function PanelPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <h3
-                className="text-2xl font-bold text-neutral-800"
+                className="text-center text-2xl font-bold text-neutral-800"
                 style={{ fontFamily: "var(--font-caveat)" }}
               >
-                Hediye Kutusuna Koy 🎁
+                Hediye Kutusuna Koy
               </h3>
-              <p className="mt-0.5 text-xs leading-relaxed text-neutral-400">
+              <p className="mt-0.5 text-center text-xs leading-relaxed text-neutral-400">
                 <b className="text-neutral-600">{pendingBox.code}</b> kodlu
                 manifestin 250 şans barajını geçti. Duvarda böyle
                 sergilenecek:

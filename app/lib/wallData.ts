@@ -31,7 +31,7 @@ export type Envelope = {
   sticker?: Sticker;
   luck: number; // kaç kişi şans diledi
   cheers: number; // kaç kişi tebrik etti
-  views: number; // görüntülenme sayısı (şimdilik rastgele; ileride IP bazlı)
+  views: number; // görüntülenme — cihaz başına günde 1 sayılır (demo: localStorage)
   code: string; // manifeste özel arama kodu — 5 rakam + 2 harf (örn. 48213KT)
   date: string; // zarfın eklendiği tarih
   year: number; // filtreleme için
@@ -61,8 +61,8 @@ export const MEMBER_ID_BASE = 900000;
 // Reklam alanları (topbar + 2 banner) — admin panelden açılıp kapatılır
 export const ADS_KEY = "mw_ads";
 
-// Test modu — admin panelden açılır: duvar popup'larında şans sınırsız ve
-// +10'ar dilenir; üye manifestlerine kalıcı yazılır (ödül akışı testi için)
+// Test modu — admin panelden açılır: duvar popup'larında şans ve tebrik
+// sınırsız, +10'ar artar; üye manifestlerine kalıcı yazılır (ödül akışı testi)
 export const TEST_KEY = "mw_test_mode";
 
 // ── Bildirimler — ziyaretçi bir manifesti şikâyet eder, admin panele düşer ──

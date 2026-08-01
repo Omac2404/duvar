@@ -32,6 +32,13 @@ import {
   TOTAL,
   type Report,
 } from "../lib/wallData";
+import {
+  getMailConfig,
+  saveMailConfig,
+  sendMail,
+  smtpReady,
+  type MailConfig,
+} from "../lib/mail";
 
 const inputCls =
   "w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm " +
@@ -222,7 +229,7 @@ export default function AdminPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<
-    "overview" | "members" | "manifests" | "demo" | "reports"
+    "overview" | "members" | "manifests" | "demo" | "reports" | "mail"
   >("overview");
 
   // Ziyaretçi bildirimleri (şikâyetler) — duvar popup'larından gelir
@@ -236,13 +243,29 @@ export default function AdminPage() {
   const [mSearch, setMSearch] = useState("");
   const [manSearch, setManSearch] = useState("");
 
+  // Bildirim ayarları — SMTP + Google Client ID (üye ekranı bunları okur)
+  const [mailCfg, setMailCfg] = useState<MailConfig | null>(null);
+  const [mailSaved, setMailSaved] = useState(false);
+  const [testTo, setTestTo] = useState("");
+  const [testResult, setTestResult] = useState<{
+    ok: boolean;
+    msg: string;
+  } | null>(null);
+  const [testBusy, setTestBusy] = useState(false);
+
   useEffect(() => {
     setUsers(getUsers());
     setReports(getReports());
     setAds(localStorage.getItem(ADS_KEY) === "1");
     setTestMode(localStorage.getItem(TEST_KEY) === "1");
+    setMailCfg(getMailConfig());
     setReady(true);
   }, []);
+
+  function patchMail(p: Partial<MailConfig>) {
+    setMailSaved(false);
+    setMailCfg((c) => (c ? { ...c, ...p } : c));
+  }
 
   function reload() {
     setUsers(getUsers());
@@ -478,6 +501,7 @@ export default function AdminPage() {
     { key: "manifests", label: `💌 Üye Manifestleri (${allManifests.length})` },
     { key: "demo", label: `🧪 Demo Manifestler (${TOTAL})` },
     { key: "reports", label: `🚩 Bildirilenler (${reports.length})` },
+    { key: "mail", label: "🔔 Bildirim Ayarları" },
   ] as const;
 
   return (
@@ -1069,6 +1093,214 @@ export default function AdminPage() {
                 </table>
               </section>
             )}
+          </div>
+        )}
+
+        {/* ── Bildirim Ayarları: SMTP + Google ile giriş ── */}
+        {tab === "mail" && mailCfg && (
+          <div className="mt-5 space-y-5">
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-neutral-700">
+                📮 SMTP (E-posta) Ayarları
+              </h2>
+              <p className="mt-1 text-xs leading-relaxed text-neutral-400">
+                Üye olurken gönderilen doğrulama kodu ve şifre sıfırlama kodu
+                bu SMTP hesabından yollanır. Ayarlar boş bırakılırsa kodlar
+                ekrana demo bildirimi olarak düşer.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                    SMTP Sunucusu
+                  </span>
+                  <input
+                    value={mailCfg.host}
+                    onChange={(e) => patchMail({ host: e.target.value })}
+                    placeholder="smtp.gmail.com"
+                    className={inputCls}
+                  />
+                </label>
+                <div className="flex gap-3">
+                  <label className="block flex-1">
+                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                      Port
+                    </span>
+                    <input
+                      value={mailCfg.port || ""}
+                      onChange={(e) =>
+                        patchMail({
+                          port: Number(e.target.value.replace(/\D/g, "")) || 0,
+                        })
+                      }
+                      placeholder="587"
+                      inputMode="numeric"
+                      className={inputCls}
+                    />
+                  </label>
+                  <label className="flex shrink-0 cursor-pointer flex-col items-start">
+                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                      SSL (465)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => patchMail({ secure: !mailCfg.secure })}
+                      aria-label="SSL bağlantısını aç/kapat"
+                      className={`relative mt-1.5 h-7 w-12 cursor-pointer rounded-full transition-colors ${
+                        mailCfg.secure ? "bg-emerald-500" : "bg-neutral-300"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${
+                          mailCfg.secure ? "left-[22px]" : "left-0.5"
+                        }`}
+                      />
+                    </button>
+                  </label>
+                </div>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                    Kullanıcı Adı
+                  </span>
+                  <input
+                    value={mailCfg.user}
+                    onChange={(e) => patchMail({ user: e.target.value })}
+                    placeholder="bildirim@site.com"
+                    className={inputCls}
+                    autoComplete="off"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                    Şifre / Uygulama Şifresi
+                  </span>
+                  <input
+                    type="password"
+                    value={mailCfg.pass}
+                    onChange={(e) => patchMail({ pass: e.target.value })}
+                    placeholder="••••••••"
+                    className={inputCls}
+                    autoComplete="new-password"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                    Gönderen Adı
+                  </span>
+                  <input
+                    value={mailCfg.fromName}
+                    onChange={(e) => patchMail({ fromName: e.target.value })}
+                    placeholder="Manifest Duvarı"
+                    className={inputCls}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                    Gönderen E-posta
+                  </span>
+                  <input
+                    type="email"
+                    value={mailCfg.fromEmail}
+                    onChange={(e) => patchMail({ fromEmail: e.target.value })}
+                    placeholder="bildirim@site.com"
+                    className={inputCls}
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-neutral-700">
+                🔑 Google ile Giriş
+              </h2>
+              <p className="mt-1 text-xs leading-relaxed text-neutral-400">
+                Google Cloud Console&apos;dan alınan OAuth Client ID buraya
+                girildiğinde üye ekranındaki &quot;Google ile devam&quot;
+                butonu gerçek Google hesap seçiciyi kullanır; boşsa demo
+                seçici gösterilir.
+              </p>
+              <label className="mt-3 block">
+                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                  Google Client ID
+                </span>
+                <input
+                  value={mailCfg.googleClientId}
+                  onChange={(e) =>
+                    patchMail({ googleClientId: e.target.value.trim() })
+                  }
+                  placeholder="123456789-abc.apps.googleusercontent.com"
+                  className={inputCls}
+                  autoComplete="off"
+                />
+              </label>
+            </section>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  saveMailConfig(mailCfg);
+                  setMailSaved(true);
+                }}
+                className="cursor-pointer rounded-xl bg-neutral-800 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-neutral-700"
+              >
+                Ayarları Kaydet
+              </button>
+              {mailSaved && (
+                <span className="text-xs font-medium text-emerald-600">
+                  ✓ Kaydedildi
+                </span>
+              )}
+            </div>
+
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-neutral-700">
+                ✉️ Test E-postası
+              </h2>
+              <p className="mt-1 text-xs text-neutral-400">
+                Kayıtlı SMTP ayarlarıyla deneme gönderimi yapar (önce
+                kaydet).
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <input
+                  type="email"
+                  value={testTo}
+                  onChange={(e) => setTestTo(e.target.value)}
+                  placeholder="alici@eposta.com"
+                  className={`${inputCls} max-w-xs`}
+                />
+                <button
+                  type="button"
+                  disabled={testBusy || !testTo.trim() || !smtpReady(mailCfg)}
+                  onClick={async () => {
+                    setTestBusy(true);
+                    setTestResult(null);
+                    const r = await sendMail(
+                      testTo.trim(),
+                      "Manifest Duvarı — SMTP Testi",
+                      "SMTP ayarların çalışıyor! Bu bir test e-postasıdır. ✨",
+                    );
+                    setTestBusy(false);
+                    setTestResult(
+                      r.ok
+                        ? { ok: true, msg: "Gönderildi ✓" }
+                        : { ok: false, msg: r.error ?? "Gönderilemedi" },
+                    );
+                  }}
+                  className="cursor-pointer rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 transition-colors hover:bg-neutral-50 disabled:cursor-default disabled:opacity-40"
+                >
+                  {testBusy ? "Gönderiliyor…" : "Test Gönder"}
+                </button>
+                {testResult && (
+                  <span
+                    className={`text-xs font-medium ${
+                      testResult.ok ? "text-emerald-600" : "text-red-500"
+                    }`}
+                  >
+                    {testResult.msg}
+                  </span>
+                )}
+              </div>
+            </section>
           </div>
         )}
       </div>

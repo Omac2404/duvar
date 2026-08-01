@@ -275,7 +275,8 @@ export function sendCode(
   const key = email.trim().toLowerCase();
   const now = Date.now();
   const prev = codes[key];
-  if (prev && now - prev.lastSent < CODE_RESEND_MS)
+  // Deneme hakkı bittiyse 60 sn bekletmeden yeni kod istenebilir
+  if (prev && now - prev.lastSent < CODE_RESEND_MS && prev.attempts > 0)
     return {
       ok: false,
       waitSec: Math.ceil((CODE_RESEND_MS - (now - prev.lastSent)) / 1000),

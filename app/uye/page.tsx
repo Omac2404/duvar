@@ -2,14 +2,15 @@
 
 // ── Üye Ol / Giriş Yap ekranı ────────────────────────────────────────────
 // Akışlar: giriş • üye ol → e-posta doğrulama (ilk üyelikte bir kez) •
-// şifremi unuttum → kod → yeni şifre • Google ile devam (demo hesap seçici).
-// Demo notu: doğrulama e-postası ekrana "gelen kutusu" bildirimi olarak
-// düşer; canlıda gerçek e-posta servisi bağlanacak.
+// şifremi unuttum → kod → yeni şifre • Google ile devam.
+// Kod gönderimi: admin panelde SMTP yapılandırıldıysa gerçek e-posta
+// gönderilir; yapılandırılmadıysa (veya gönderim başarısızsa) kod ekrana
+// "gelen kutusu" demo bildirimi olarak düşer. Google girişi de admin
+// panelde Client ID tanımlıysa gerçek Google (GIS) akışını kullanır.
 
 import { useEffect, useRef, useState } from "react";
 import SiteHeader from "../components/SiteHeader";
 import {
-  CODE_MAX_ATTEMPTS,
   DEMO_GOOGLE,
   currentUser,
   demoHash,
@@ -22,6 +23,27 @@ import {
   validEmail,
   verifyCode,
 } from "../lib/auth";
+import { getMailConfig, sendCodeMail, smtpReady } from "../lib/mail";
+
+// Google Identity Services (GIS) — sayfaya script ile yüklenir
+type GsiButtonConfig = {
+  theme: string;
+  size: string;
+  width: number;
+  text: string;
+  locale: string;
+};
+type Gsi = {
+  accounts?: {
+    id?: {
+      initialize: (cfg: {
+        client_id: string;
+        callback: (resp: { credential: string }) => void;
+      }) => void;
+      renderButton: (el: HTMLElement, cfg: GsiButtonConfig) => void;
+    };
+  };
+};
 
 type Mode =
   | "login"
@@ -125,19 +147,36 @@ export default function AuthPage() {
     setCode("");
   }
 
-  // Demo e-postayı "gönder": bildirim olarak ekrana düşür
-  function dispatchCode(to: string): boolean {
+  // Kodu gönder: SMTP yapılandırıldıysa gerçek e-posta; değilse (veya
+  // gönderim başarısız olursa) ekrana düşen demo bildirimi
+  async function dispatchCode(to: string): Promise<boolean> {
     const r = sendCode(to);
     if (!r.ok) {
       setErr(`Yeni kod için ${r.waitSec} sn bekle.`);
       return false;
     }
-    setMail({ code: r.code, to });
     setResendIn(60);
+    if (smtpReady()) {
+      setBusy(true);
+      const m = await sendCodeMail(to, r.code);
+      setBusy(false);
+      if (m.ok) {
+        // Ek bilgi kutusu gösterilmez — kod ekranı başlığı zaten söylüyor
+        setMail(null);
+        setErr("");
+        return true;
+      }
+      // Gerçek gönderim başarısız: nedeni göster, kod demoya düşsün ki
+      // akış kilitlenmesin (SMTP ayarı buradan teşhis edilir)
+      setErr(
+        `E-posta gönderilemedi: ${m.error ?? "bilinmeyen hata"} — kod demo bildirimi olarak gösterildi.`,
+      );
+    }
+    setMail({ code: r.code, to });
     return true;
   }
 
-  function handleRegister(e: React.FormEvent) {
+  async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
     const nm = name.trim();
@@ -149,14 +188,22 @@ export default function AuthPage() {
     if (pass !== pass2) return setErr("Şifreler birbiriyle uyuşmuyor.");
     const r = registerUser(nm, email, pass);
     if (!r.ok) return setErr(r.error);
-    if (dispatchCode(email)) switchMode("verify");
+    // switchMode kullanılmaz: dispatchCode'un gönderim mesajları korunur
+    if (await dispatchCode(email)) {
+      setMode("verify");
+      setCode("");
+    }
   }
 
   function handleVerify(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
     const r = verifyCode(email, code);
-    if (!r.ok) return setErr(r.error);
+    if (!r.ok) {
+      // Deneme hakkı bitti: "Yeniden gönder" beklemeden açılır
+      if (r.left === 0) setResendIn(0);
+      return setErr(r.error);
+    }
     const user = findUser(email);
     if (!user) return setErr("Üyelik bulunamadı.");
     user.verified = true;
@@ -166,7 +213,7 @@ export default function AuthPage() {
     window.location.href = "/panel";
   }
 
-  function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
     const user = findUser(email);
@@ -175,7 +222,7 @@ export default function AuthPage() {
     // İlk üyelikte doğrulama yarım kaldıysa önce onu tamamlat
     if (!user.verified) {
       setInfo("E-postan henüz doğrulanmamış. Sana yeni bir kod gönderdik.");
-      if (dispatchCode(email)) setMode("verify");
+      if (await dispatchCode(email)) setMode("verify");
       return;
     }
     startSession(user.id);
@@ -183,20 +230,27 @@ export default function AuthPage() {
     window.location.href = "/panel";
   }
 
-  function handleForgotSend(e: React.FormEvent) {
+  async function handleForgotSend(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
     if (!validEmail(email)) return setErr("Geçerli bir e-posta adresi gir.");
     if (!findUser(email))
       return setErr("Bu e-posta ile kayıtlı bir üyelik yok.");
-    if (dispatchCode(email)) switchMode("forgotCode");
+    if (await dispatchCode(email)) {
+      setMode("forgotCode");
+      setCode("");
+    }
   }
 
   function handleForgotCode(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
     const r = verifyCode(email, code);
-    if (!r.ok) return setErr(r.error);
+    if (!r.ok) {
+      // Deneme hakkı bitti: "Yeniden gönder" beklemeden açılır
+      if (r.left === 0) setResendIn(0);
+      return setErr(r.error);
+    }
     switchMode("forgotReset");
   }
 
@@ -215,6 +269,80 @@ export default function AuthPage() {
     window.location.href = "/panel";
   }
 
+  // Gerçek Google girişi (GIS) — admin panelde Client ID tanımlıysa resmi
+  // Google butonu basılır; kimlik jetonundaki e-posta ile üyelik açılır/girilir
+  const [googleClientId, setGoogleClientId] = useState("");
+  useEffect(() => setGoogleClientId(getMailConfig().googleClientId), []);
+  const gisBtnRef = useRef<HTMLDivElement>(null);
+
+  function finishGoogle(credential: string) {
+    try {
+      const payload = JSON.parse(
+        atob(credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")),
+      ) as { email?: string; name?: string };
+      if (!payload.email)
+        return setErr("Google hesabından e-posta alınamadı.");
+      let user = findUser(payload.email);
+      if (!user) {
+        const r = registerUser(
+          payload.name ?? payload.email.split("@")[0],
+          payload.email,
+          "google-" + Date.now(),
+        );
+        if (!r.ok) return setErr(r.error);
+        user = r.user;
+        user.provider = "google";
+        user.verified = true; // Google e-postayı zaten doğrulamıştır
+        saveUser(user);
+      }
+      startSession(user.id);
+      setBusy(true);
+      window.location.href = "/panel";
+    } catch {
+      setErr("Google girişi doğrulanamadı.");
+    }
+  }
+
+  // GIS scriptini yükle ve resmi Google butonunu bas
+  useEffect(() => {
+    if (!googleClientId || !(mode === "login" || mode === "register")) return;
+    const init = () => {
+      const g = (window as unknown as { google?: Gsi }).google;
+      const el = gisBtnRef.current;
+      if (!g?.accounts?.id || !el) return;
+      g.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: (resp) => finishGoogle(resp.credential),
+      });
+      el.innerHTML = "";
+      g.accounts.id.renderButton(el, {
+        theme: "outline",
+        size: "large",
+        width: 352,
+        text: mode === "login" ? "signin_with" : "signup_with",
+        locale: "tr",
+      });
+    };
+    if ((window as unknown as { google?: Gsi }).google) {
+      init();
+      return;
+    }
+    const existing = document.getElementById(
+      "gsi-script",
+    ) as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener("load", init);
+      return () => existing.removeEventListener("load", init);
+    }
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client";
+    s.id = "gsi-script";
+    s.async = true;
+    s.onload = init;
+    document.head.appendChild(s);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [googleClientId, mode]);
+
   // Google ile devam (demo): hesap seçiciden onaylanınca üyelik açılır/girilir
   function handleGooglePick() {
     let user = findUser(DEMO_GOOGLE.email);
@@ -232,12 +360,12 @@ export default function AuthPage() {
   }
 
   const titles: Record<Mode, [string, string]> = {
-    login: ["Tekrar hoş geldin 👋", "Manifestlerine kaldığın yerden devam et"],
-    register: ["Aramıza katıl ✨", "Manifestini duvara asmak bir adım uzağında"],
-    verify: ["E-postanı doğrula 📬", `${email} adresine 6 haneli kod gönderdik`],
-    forgot: ["Şifreni mi unuttun? 🔑", "E-postana sıfırlama kodu gönderelim"],
-    forgotCode: ["Kodu gir 📬", `${email} adresine 6 haneli kod gönderdik`],
-    forgotReset: ["Yeni şifreni belirle 🔒", "Bu sefer unutmayacağın bir şey seç"],
+    login: ["Hoş geldin", ""],
+    register: ["Aramıza katıl", ""],
+    verify: ["E-postanı doğrula", `${email} adresine 6 haneli kod gönderdik`],
+    forgot: ["Şifreni mi unuttun?", ""],
+    forgotCode: ["Kodu gir", `${email} adresine 6 haneli kod gönderdik`],
+    forgotReset: ["Yeni şifreni belirle", "Bu sefer unutmayacağın bir şey seç"],
   };
 
   return (
@@ -262,7 +390,13 @@ export default function AuthPage() {
           >
             {titles[mode][0]}
           </h1>
-          <p className="mb-6 mt-1 text-sm text-neutral-500">{titles[mode][1]}</p>
+          {titles[mode][1] ? (
+            <p className="mb-6 mt-1 text-sm text-neutral-500">
+              {titles[mode][1]}
+            </p>
+          ) : (
+            <div className="mb-6" />
+          )}
 
           {info && (
             <p className="mb-4 rounded-xl bg-sky-50 px-4 py-2.5 text-sm text-sky-700">
@@ -358,10 +492,6 @@ export default function AuthPage() {
               <button type="submit" disabled={busy} className={primaryBtn}>
                 Üye Ol
               </button>
-              <p className="text-center text-[11px] leading-relaxed text-neutral-400">
-                Üye olarak e-posta adresine tek seferlik doğrulama kodu
-                gönderilmesini kabul etmiş olursun.
-              </p>
             </form>
           )}
 
@@ -390,7 +520,7 @@ export default function AuthPage() {
               >
                 {mode === "verify" ? "Doğrula ve Giriş Yap" : "Kodu Onayla"}
               </button>
-              <div className="flex items-center justify-between text-xs text-neutral-500">
+              <div className="text-xs text-neutral-500">
                 <span>
                   Kod gelmedi mi?{" "}
                   {resendIn > 0 ? (
@@ -406,9 +536,6 @@ export default function AuthPage() {
                       Yeniden gönder
                     </button>
                   )}
-                </span>
-                <span className="text-neutral-400">
-                  {CODE_MAX_ATTEMPTS} deneme hakkı
                 </span>
               </div>
             </form>
@@ -479,14 +606,19 @@ export default function AuthPage() {
                 </span>
                 <span className="h-px flex-1 bg-neutral-200" />
               </div>
-              <button
-                type="button"
-                onClick={() => setGoogleOpen(true)}
-                className="flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-xl border border-neutral-300 bg-white py-2.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
-              >
-                <GoogleIcon />
-                Google ile {mode === "login" ? "giriş yap" : "üye ol"}
-              </button>
+              {googleClientId ? (
+                // Gerçek Google butonu (GIS) — Client ID admin panelde tanımlı
+                <div ref={gisBtnRef} className="flex min-h-11 justify-center" />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setGoogleOpen(true)}
+                  className="flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-xl border border-neutral-300 bg-white py-2.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+                >
+                  <GoogleIcon />
+                  Google ile {mode === "login" ? "giriş yap" : "üye ol"}
+                </button>
+              )}
               <p className="mt-5 text-center text-sm text-neutral-500">
                 {mode === "login" ? (
                   <>

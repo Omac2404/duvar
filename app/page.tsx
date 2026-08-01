@@ -11,7 +11,7 @@ import {
 } from "react";
 import SiteHeader from "./components/SiteHeader";
 import CopyBtn from "./components/CopyBtn";
-import { getUsers, saveUser, PANEL_COLORS } from "./lib/auth";
+import { currentUser, getUsers, saveUser, PANEL_COLORS } from "./lib/auth";
 import {
   BottleVisual,
   GiftBoxVisual,
@@ -116,6 +116,49 @@ function persistLuck(code: string, delta: number) {
   }
 }
 
+// Tebrik de üye manifestine kalıcı yazılır (demo zarflarında no-op)
+function persistCheer(code: string, delta: number) {
+  for (const u of getUsers()) {
+    const m = u.manifests.find((x) => x.code === code);
+    if (m) {
+      m.cheers += delta;
+      saveUser(u);
+      return;
+    }
+  }
+}
+
+// Görüntülenme: aynı cihaz aynı manifesti günde 1 kez sayar — zarfı
+// aç-kapa yaparak sayaç şişirilemez. Sayılan artışı (0/1) döndürür;
+// üye manifestine kalıcı yazılır (demo zarflarında oturumluk kalır)
+const VIEWED_KEY = "mw_viewed";
+function registerView(code: string): number {
+  try {
+    const day = new Date().toLocaleDateString("sv-SE"); // YYYY-AA-GG (yerel)
+    let rec: { day: string; codes: Record<string, 1> };
+    try {
+      rec = JSON.parse(localStorage.getItem(VIEWED_KEY) ?? "");
+    } catch {
+      rec = { day, codes: {} };
+    }
+    if (rec.day !== day || !rec.codes) rec = { day, codes: {} };
+    if (rec.codes[code]) return 0;
+    rec.codes[code] = 1;
+    localStorage.setItem(VIEWED_KEY, JSON.stringify(rec));
+    for (const u of getUsers()) {
+      const m = u.manifests.find((x) => x.code === code);
+      if (m) {
+        m.views += 1;
+        saveUser(u);
+        break;
+      }
+    }
+    return 1;
+  } catch {
+    return 0;
+  }
+}
+
 // Kutu popup'ına giden veri — LetterCard'ın beklediği ortak biçim
 function toGiftData(env: Envelope): LetterInfo {
   return {
@@ -136,11 +179,13 @@ function BottlePopup({
   origin,
   onClose,
   onWish,
+  onCheer,
 }: {
   bottle: BottleData;
   origin: Origin;
   onClose: () => void;
   onWish?: (delta: number) => void;
+  onCheer?: (delta: number) => void;
 }) {
   const [stage, setStage] = useState<"origin" | "center" | "open">("origin");
   // Notun yolculuğu: şişenin içinde → boğazda (rulo) → ağzın üstünde açık
@@ -278,7 +323,7 @@ function BottlePopup({
               "transform 370ms cubic-bezier(0.3, 0.8, 0.3, 1), opacity 200ms ease",
           }}
         >
-          <LetterCard info={bottle} onWish={onWish} />
+          <LetterCard info={bottle} onWish={onWish} onCheer={onCheer} />
           {/* Mobil kapat — mektubun dışında, sağ üst köşesinde */}
           <button
             type="button"
@@ -516,6 +561,7 @@ function GiftPopup({
   origin,
   onClose,
   onWish,
+  onCheer,
 }: {
   gift: LetterInfo;
   rot: number; // duvardaki kutunun açısı — uçuş bu açıdan başlar
@@ -524,6 +570,7 @@ function GiftPopup({
   origin: Origin;
   onClose: () => void;
   onWish?: (delta: number) => void;
+  onCheer?: (delta: number) => void;
 }) {
   const [stage, setStage] = useState<"origin" | "center" | "open">("origin");
   // Kapak uçarken kağıdın üstünde, kağıt yükseldikten sonra altında kalır
@@ -629,7 +676,7 @@ function GiftPopup({
               }`,
             }}
           >
-            <LetterCard info={gift} onWish={onWish} />
+            <LetterCard info={gift} onWish={onWish} onCheer={onCheer} />
             {/* Mobil kapat — mektubun dışında, sağ üst köşesinde */}
             <button
               type="button"
@@ -987,9 +1034,11 @@ type LetterInfo = {
 function LetterCard({
   info,
   onWish,
+  onCheer,
 }: {
   info: LetterInfo;
   onWish?: (delta: number) => void; // dilek sayısını kalıcılaştırma kancası
+  onCheer?: (delta: number) => void; // tebrik sayısını kalıcılaştırma kancası
 }) {
   // Şans dileme / tebrik (demo: yerel state, backend'de gerçek sayaca bağlanır)
   const [luck, setLuck] = useState(info.luck);
@@ -999,6 +1048,10 @@ function LetterCard({
   // Test modu (admin panelden): şans sınırsız ve +10'ar dilenir
   const [testMode, setTestMode] = useState(false);
   useEffect(() => setTestMode(localStorage.getItem(TEST_KEY) === "1"), []);
+  // Şans/tebrik yalnızca üye girişiyle dilenebilir (test modu hariç);
+  // girişsiz tıklamada doğrudan üye giriş ekranına yönlendirilir
+  const [member, setMember] = useState(false);
+  useEffect(() => setMember(!!currentUser()), []);
   return (
     <div className="max-h-[62vh] overflow-y-auto rounded-[4px] bg-[#fffdf5] px-8 py-7 shadow-[0_16px_44px_rgba(0,0,0,0.35)] max-[520px]:px-5 max-[520px]:py-5">
       <p className="font-hand text-[26px] text-neutral-800 max-[520px]:text-[22px]">
@@ -1109,9 +1162,21 @@ function LetterCard({
                 <button
                   type="button"
                   onClick={() => {
+                    if (!member && !testMode) {
+                      window.location.href = "/uye";
+                      return;
+                    }
+                    if (testMode) {
+                      // Test modu: sınırsız, +10'ar tebrik
+                      setCheered(true);
+                      setCheers((n) => n + 10);
+                      onCheer?.(10);
+                      return;
+                    }
                     if (cheered) return;
                     setCheered(true);
                     setCheers((n) => n + 1);
+                    onCheer?.(1);
                   }}
                   className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium shadow-sm transition-all max-[520px]:px-3 max-[520px]:py-1 max-[520px]:text-xs ${
                     cheered
@@ -1126,7 +1191,7 @@ function LetterCard({
                   >
                     👏
                   </span>
-                  Tebrik et
+                  {testMode ? "Tebrik et +10" : "Tebrik et"}
                 </button>
               </span>
             </>
@@ -1156,6 +1221,10 @@ function LetterCard({
               <button
                 type="button"
                 onClick={() => {
+                  if (!member && !testMode) {
+                    window.location.href = "/uye";
+                    return;
+                  }
                   if (testMode) {
                     // Test modu: sınırsız, +10'ar — barajlar hızla denenir
                     setWished(true);
@@ -1212,6 +1281,10 @@ function ManifestPopup({
   // Test modu (admin panelden): şans sınırsız ve +10'ar dilenir
   const [testMode, setTestMode] = useState(false);
   useEffect(() => setTestMode(localStorage.getItem(TEST_KEY) === "1"), []);
+  // Şans/tebrik yalnızca üye girişiyle dilenebilir (test modu hariç);
+  // girişsiz tıklamada doğrudan üye giriş ekranına yönlendirilir
+  const [member, setMember] = useState(false);
+  useEffect(() => setMember(!!currentUser()), []);
   // Kapak, mektup dışarıdayken arkada (1), mektup içerideyken önde (30) durur
   const [flapZ, setFlapZ] = useState(30);
   const closingRef = useRef(false);
@@ -1547,9 +1620,24 @@ function ManifestPopup({
                   <button
                     type="button"
                     onClick={() => {
+                      if (!member && !testMode) {
+                        window.location.href = "/uye";
+                        return;
+                      }
+                      if (testMode) {
+                        // Test modu: sınırsız, +10'ar — üye manifestine
+                        // kalıcı yazılır
+                        setCheered(true);
+                        setCheers((n) => n + 10);
+                        envelope.cheers += 10;
+                        persistCheer(envelope.code, 10);
+                        return;
+                      }
                       if (cheered) return;
                       setCheered(true);
                       setCheers((n) => n + 1);
+                      envelope.cheers += 1;
+                      persistCheer(envelope.code, 1);
                     }}
                     className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium shadow-sm transition-all max-[520px]:px-3 max-[520px]:py-1 max-[520px]:text-xs ${
                       cheered
@@ -1564,7 +1652,7 @@ function ManifestPopup({
                     >
                       👏
                     </span>
-                    Tebrik et
+                    {testMode ? "Tebrik et +10" : "Tebrik et"}
                   </button>
                 </span>
               </>
@@ -1594,6 +1682,10 @@ function ManifestPopup({
                 <button
                   type="button"
                   onClick={() => {
+                    if (!member && !testMode) {
+                      window.location.href = "/uye";
+                      return;
+                    }
                     if (testMode) {
                       // Test modu: sınırsız, +10'ar — üye manifestine
                       // kalıcı yazılır, panel ödül akışları tetiklenir
@@ -2356,6 +2448,7 @@ export default function Home() {
                 onClick={(e) => {
                   const el = e.currentTarget;
                   const r = el.getBoundingClientRect();
+                  g.env.views += registerView(g.env.code);
                   // Genişlik döndürülmemiş halinden alınır (bbox açıyla büyür)
                   setGiftOpen({
                     id: g.env.id,
@@ -2413,6 +2506,7 @@ export default function Home() {
               onClick={(e) => {
                 const el = e.currentTarget;
                 const r = el.getBoundingClientRect();
+                b.env.views += registerView(b.env.code);
                 setBottleOpen({
                   id: b.env.id,
                   origin: {
@@ -2504,7 +2598,10 @@ export default function Home() {
                 hidden={selected?.env.id === env.id}
                 offset={displaced.get(env.id)}
                 highlighted={highlightId === env.id}
-                onOpen={(e, origin) => setSelected({ env: e, origin })}
+                onOpen={(e, origin) => {
+                  e.views += registerView(e.code);
+                  setSelected({ env: e, origin });
+                }}
               />
             ))}
         </div>
@@ -2521,6 +2618,10 @@ export default function Home() {
               onWish={(d) => {
                 be.env.luck += d;
                 persistLuck(be.env.code, d);
+              }}
+              onCheer={(d) => {
+                be.env.cheers += d;
+                persistCheer(be.env.code, d);
               }}
             />
           ) : null;
@@ -2540,6 +2641,10 @@ export default function Home() {
               onWish={(d) => {
                 ge.env.luck += d;
                 persistLuck(ge.env.code, d);
+              }}
+              onCheer={(d) => {
+                ge.env.cheers += d;
+                persistCheer(ge.env.code, d);
               }}
             />
           ) : null;
