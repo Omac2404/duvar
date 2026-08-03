@@ -30,6 +30,7 @@ import {
   type MemberManifest,
   type User,
 } from "../lib/auth";
+import { generateManifestCode } from "../lib/wallData";
 
 const inputCls =
   "w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm " +
@@ -1411,12 +1412,7 @@ export default function PanelPage() {
 
   // Modal açılırken manifeste kodu peşin atanır — mektupta görünür
   function openWrite() {
-    const L = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    setDraftCode(
-      String(10000 + Math.floor(Math.random() * 90000)) +
-        L[Math.floor(Math.random() * 26)] +
-        L[Math.floor(Math.random() * 26)],
-    );
+    setDraftCode(generateManifestCode());
     setDraft("");
     setDraftName(""); // rumuz boş başlar — kullanıcı ismi ön tanımlı gelmez
     setClosing(false);
@@ -1862,7 +1858,7 @@ export default function PanelPage() {
 
           {user.manifests.length === 0 ? (
             <div className="rounded-2xl border-2 border-dashed border-neutral-300 bg-white/60 px-6 py-12 text-center">
-              <p className="text-4xl">💌</p>
+              <p className="text-4xl">✉️</p>
               <p
                 className="mt-2 text-2xl text-neutral-600"
                 style={{ fontFamily: "var(--font-caveat)" }}

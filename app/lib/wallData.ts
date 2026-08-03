@@ -3,6 +3,7 @@
 // modülün yerini backend verisi alacak; tipler değişmeden kalır.
 
 import { SPECIAL_COLORS, STICKER_EMOJIS } from "../components/RewardVisuals";
+import { getUsers } from "./auth";
 
 export type EnvelopeColor = {
   base: string;
@@ -46,13 +47,31 @@ export type Envelope = {
 };
 
 // 7 haneli manifest kodu: 5 rakam + 2 harf, ayraçsız (örn. 48213KT).
-// Rakam kısmı i'den deterministik türetilir — her zarfta benzersizdir
+// Rakam kısmı i'den deterministik türetilir — seed zarflarında benzersizdir
 const CODE_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 function makeCode(i: number, rand: () => number): string {
   const digits = String(10000 + ((i * 48611) % 90000));
   const l1 = CODE_LETTERS[Math.floor(rand() * 26)];
   const l2 = CODE_LETTERS[Math.floor(rand() * 26)];
   return `${digits}${l1}${l2}`;
+}
+
+// Yeni manifest kodu — duvardaki seed zarfları ve tüm üye manifestleriyle
+// çakışmayana kadar yeniden üretilir; böylece 60,8 milyonluk kod uzayının
+// (90.000 rakam × 676 harf) tamamı güvenle kullanılabilir
+let seedCodes: Set<string> | null = null;
+export function generateManifestCode(): string {
+  if (!seedCodes) seedCodes = new Set(buildEnvelopes().map((e) => e.code));
+  const used = new Set(seedCodes);
+  for (const u of getUsers()) for (const m of u.manifests) used.add(m.code);
+  let code: string;
+  do {
+    code =
+      String(10000 + Math.floor(Math.random() * 90000)) +
+      CODE_LETTERS[Math.floor(Math.random() * 26)] +
+      CODE_LETTERS[Math.floor(Math.random() * 26)];
+  } while (used.has(code));
+  return code;
 }
 
 // Üye zarflarının id aralığı — duvarın kendi zarflarından ayrışması için
