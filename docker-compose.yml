@@ -1,0 +1,19 @@
+# Lokal gelistirme icin Postgres — `docker compose up -d` ile ayaga kalkar.
+# Canlida (EasyPanel) ayni imajla bir Postgres servisi acilip DATABASE_URL
+# ona gore ayarlanir; uygulama kodu ikisini de ayirt etmez.
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: manifest-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: manifest
+      POSTGRES_PASSWORD: manifest
+      POSTGRES_DB: manifest
+    ports:
+      - "5432:5432"
+    volumes:
+      - manifest-pgdata:/var/lib/postgresql/data
+
+volumes:
+  manifest-pgdata:

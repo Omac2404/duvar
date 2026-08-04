@@ -22,15 +22,15 @@ import {
 import {
   PANEL_COLORS,
   currentUser,
-  deleteUser,
-  demoHash,
-  endSession,
+  deleteAccount as apiDeleteAccount,
+  logout as apiLogout,
+  newManifestCode,
   passwordIssue,
-  saveUser,
+  saveMyManifests,
+  updateAccount,
   type MemberManifest,
   type User,
 } from "../lib/auth";
-import { generateManifestCode } from "../lib/wallData";
 
 const inputCls =
   "w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm " +
@@ -1411,8 +1411,10 @@ export default function PanelPage() {
   const [closing, setClosing] = useState(false);
 
   // Modal açılırken manifeste kodu peşin atanır — mektupta görünür
+  // (kod sunucudan gelir; modal beklemeden açılır, kod anında dolar)
   function openWrite() {
-    setDraftCode(generateManifestCode());
+    setDraftCode("");
+    newManifestCode().then(setDraftCode);
     setDraft("");
     setDraftName(""); // rumuz boş başlar — kullanıcı ismi ön tanımlı gelmez
     setClosing(false);
@@ -1463,23 +1465,25 @@ export default function PanelPage() {
   const [setOk, setSetOk] = useState("");
 
   useEffect(() => {
-    const u = currentUser();
-    if (!u) {
-      window.location.href = "/uye";
-      return;
-    }
-    setUser(u);
-    setNewName(u.name);
-    setReady(true);
+    currentUser().then((u) => {
+      if (!u) {
+        window.location.href = "/uye";
+        return;
+      }
+      setUser(u);
+      setNewName(u.name);
+      setReady(true);
+    });
   }, []);
 
   if (!ready || !user) return null;
 
+  // İyimser güncelleme: ekran anında yenilenir, liste arkada API'ye yazılır
   function update(mutate: (u: User) => void) {
     const next = { ...user!, manifests: [...user!.manifests] };
     mutate(next);
-    saveUser(next);
     setUser(next);
+    void saveMyManifests(next.manifests).catch(() => {});
   }
 
   function addManifest() {
@@ -1586,40 +1590,37 @@ export default function PanelPage() {
     setConfirmDel(null);
   }
 
-  function deleteAccount() {
-    deleteUser(user!.id);
+  async function deleteAccount() {
+    await apiDeleteAccount();
     window.location.href = "/";
   }
 
-  function saveSettings(e: React.FormEvent) {
+  async function saveSettings(e: React.FormEvent) {
     e.preventDefault();
     setSetErrMsg("");
     setSetOk("");
     const nm = newName.trim();
     if (nm.length < 3 || !nm.includes(" "))
       return setSetErrMsg("İsim ve soyisim birlikte yazılmalı.");
-    // Şifre alanları doluysa şifre de değişir (Google üyeliğinde gizli)
-    if (user!.provider === "email" && (oldPass || newPass)) {
-      if (user!.passHash !== demoHash(oldPass))
-        return setSetErrMsg("Mevcut şifre hatalı.");
+    // Şifre alanları doluysa şifre de değişir (Google üyeliğinde gizli);
+    // mevcut şifre kontrolü sunucuda yapılır
+    const wantsPass = user!.provider === "email" && (oldPass || newPass);
+    if (wantsPass) {
       const issue = passwordIssue(newPass);
       if (issue) return setSetErrMsg(issue);
-      update((u) => {
-        u.name = nm;
-        u.passHash = demoHash(newPass);
-      });
-    } else {
-      update((u) => {
-        u.name = nm;
-      });
     }
+    const r = await updateAccount(
+      wantsPass ? { name: nm, oldPass, newPass } : { name: nm },
+    );
+    if (!r.ok) return setSetErrMsg(r.error ?? "Güncelleme başarısız.");
+    setUser({ ...user!, name: nm });
     setOldPass("");
     setNewPass("");
     setSetOk("Bilgilerin güncellendi. ✓");
   }
 
-  function logout() {
-    endSession();
+  async function logout() {
+    await apiLogout();
     window.location.href = "/";
   }
 

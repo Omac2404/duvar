@@ -1,36 +1,48 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Manifest Duvarı
 
-## Getting Started
+Ziyaretçilerin manifest (dilek) yazıp zarf olarak duvara astığı Next.js
+uygulaması. Üyelik, üye paneli, ödül akışları (sticker → özel renk → şişe →
+hediye kutusu), admin paneli ve Postgres backend içerir.
 
-First, run the development server:
+## Geliştirme ortamı
+
+Gereksinimler: Node.js 22+, Docker (lokal Postgres için).
 
 ```bash
+# 1. Bağımlılıklar
+npm install
+
+# 2. Postgres'i kaldır (ilk istekte şema + test hesabı otomatik kurulur)
+docker compose up -d
+
+# 3. Ortam değişkenleri
+copy .env.example .env.local
+
+# 4. Geliştirme sunucusu
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Duvar: http://localhost:3000 • Üyelik: `/uye` • Panel: `/panel` • Admin: `/admin`
+- Test hesabı: `deniz@test.com` / `Manifest123`
+- Admin şifresi: `.env.local` içindeki `ADMIN_PASSWORD` (varsayılan `manifest-admin`)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Mimari
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Veri**: Postgres (`pg`) — şema `app/lib/server/db.ts` içinde idempotent
+  kurulur; tablolar: `users`, `manifests`, `sessions`, `verification_codes`,
+  `reset_tokens`, `reports`, `settings`, `moderation_flags`.
+- **API**: `app/api/*` route handler'ları — üyelik (bcrypt + httpOnly cookie
+  oturumu), manifest CRUD + sayaçlar, bildirimler, admin uçları.
+- **İstemci**: `app/lib/auth.ts` ve `app/lib/api.ts` API'ye konuşan ince
+  katmandır; ekranlar buradaki async fonksiyonları kullanır.
+- **E-posta**: SMTP ayarları admin panelden girilir, `settings` tablosunda
+  saklanır; doğrulama kodları sunucudan gönderilir. SMTP yoksa kod ekrana
+  demo bildirimi olarak düşer.
+- **Duvarın demo zarfları** (1000 adet) deterministik olarak istemcide
+  üretilir (`app/lib/wallData.ts`); üye manifestleri backend'den gelir.
 
-## Learn More
+## Deploy (EasyPanel / Docker)
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. EasyPanel'de bir Postgres servisi aç, `DATABASE_URL`'i ona göre ayarla.
+2. Uygulama servisini bu repodaki `Dockerfile` ile kur (Next standalone).
+3. Ortam değişkenleri: `DATABASE_URL`, `ADMIN_PASSWORD`, `NODE_ENV=production`.

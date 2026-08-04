@@ -3,7 +3,6 @@
 // modülün yerini backend verisi alacak; tipler değişmeden kalır.
 
 import { SPECIAL_COLORS, STICKER_EMOJIS } from "../components/RewardVisuals";
-import { getUsers } from "./auth";
 
 export type EnvelopeColor = {
   base: string;
@@ -47,7 +46,8 @@ export type Envelope = {
 };
 
 // 7 haneli manifest kodu: 5 rakam + 2 harf, ayraçsız (örn. 48213KT).
-// Rakam kısmı i'den deterministik türetilir — seed zarflarında benzersizdir
+// Rakam kısmı i'den deterministik türetilir — seed zarflarında benzersizdir.
+// Yeni üye kodları artık sunucuda üretilir (/api/manifests/new-code)
 const CODE_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 function makeCode(i: number, rand: () => number): string {
   const digits = String(10000 + ((i * 48611) % 90000));
@@ -56,36 +56,11 @@ function makeCode(i: number, rand: () => number): string {
   return `${digits}${l1}${l2}`;
 }
 
-// Yeni manifest kodu — duvardaki seed zarfları ve tüm üye manifestleriyle
-// çakışmayana kadar yeniden üretilir; böylece 60,8 milyonluk kod uzayının
-// (90.000 rakam × 676 harf) tamamı güvenle kullanılabilir
-let seedCodes: Set<string> | null = null;
-export function generateManifestCode(): string {
-  if (!seedCodes) seedCodes = new Set(buildEnvelopes().map((e) => e.code));
-  const used = new Set(seedCodes);
-  for (const u of getUsers()) for (const m of u.manifests) used.add(m.code);
-  let code: string;
-  do {
-    code =
-      String(10000 + Math.floor(Math.random() * 90000)) +
-      CODE_LETTERS[Math.floor(Math.random() * 26)] +
-      CODE_LETTERS[Math.floor(Math.random() * 26)];
-  } while (used.has(code));
-  return code;
-}
-
 // Üye zarflarının id aralığı — duvarın kendi zarflarından ayrışması için
 export const MEMBER_ID_BASE = 900000;
 
-// Reklam alanları (topbar + 2 banner) — admin panelden açılıp kapatılır
-export const ADS_KEY = "mw_ads";
-
-// Test modu — admin panelden açılır: duvar popup'larında şans ve tebrik
-// sınırsız, +10'ar artar; üye manifestlerine kalıcı yazılır (ödül akışı testi)
-export const TEST_KEY = "mw_test_mode";
-
-// ── Bildirimler — ziyaretçi bir manifesti şikâyet eder, admin panele düşer ──
-export const REPORTS_KEY = "mw_reports";
+// ── Bildirimler — ziyaretçi bir manifesti şikâyet eder, admin panele düşer.
+// Kayıtlar artık backend'de (reports tablosu); uçlar lib/api.ts'te
 
 export type ReportReason = "Argo" | "Hakaret" | "Kötü niyet" | "Rahatsız edici";
 export const REPORT_REASONS: ReportReason[] = [
@@ -103,29 +78,6 @@ export type Report = {
   ts: number;
   date: string; // okunur tarih (tr-TR)
 };
-
-export function getReports(): Report[] {
-  try {
-    return JSON.parse(localStorage.getItem(REPORTS_KEY) ?? "[]");
-  } catch {
-    return [];
-  }
-}
-
-export function addReport(r: Report) {
-  localStorage.setItem(REPORTS_KEY, JSON.stringify([r, ...getReports()]));
-}
-
-export function removeReport(code: string, ts: number) {
-  localStorage.setItem(
-    REPORTS_KEY,
-    JSON.stringify(getReports().filter((r) => !(r.code === code && r.ts === ts))),
-  );
-}
-
-export function isReported(code: string): boolean {
-  return getReports().some((r) => r.code === code);
-}
 
 // Sponsor zarf teması — Petimemama marka renkleri (canlı, parlak)
 const SPONSOR_COLOR: EnvelopeColor = {

@@ -17,28 +17,23 @@ import {
 } from "../components/RewardVisuals";
 import {
   PANEL_COLORS,
-  deleteUser,
-  getUsers,
-  saveUser,
   type MemberManifest,
   type User,
 } from "../lib/auth";
+import { buildEnvelopes, TOTAL, type Report } from "../lib/wallData";
+import { sendTestMail, smtpReady, type MailConfig } from "../lib/mail";
 import {
-  ADS_KEY,
-  buildEnvelopes,
-  getReports,
-  removeReport,
-  TEST_KEY,
-  TOTAL,
-  type Report,
-} from "../lib/wallData";
-import {
-  getMailConfig,
-  saveMailConfig,
-  sendMail,
-  smtpReady,
-  type MailConfig,
-} from "../lib/mail";
+  adminCheck,
+  adminDeleteUser,
+  adminLogin,
+  adminRemoveReport,
+  adminReports,
+  adminResetMembers,
+  adminSaveSettings,
+  adminSaveUser,
+  adminSettings,
+  adminUsers,
+} from "../lib/api";
 
 const inputCls =
   "w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm " +
@@ -228,6 +223,10 @@ const PRESETS: { label: string; patch: Partial<Form> }[] = [
 export default function AdminPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [ready, setReady] = useState(false);
+  // Admin girişi — ADMIN_PASSWORD ortam değişkeniyle, cookie 7 gün geçerli
+  const [authed, setAuthed] = useState<boolean | null>(null);
+  const [adminPass, setAdminPass] = useState("");
+  const [adminErr, setAdminErr] = useState("");
   const [tab, setTab] = useState<
     "overview" | "members" | "manifests" | "demo" | "reports" | "mail"
   >("overview");
@@ -253,14 +252,34 @@ export default function AdminPage() {
   } | null>(null);
   const [testBusy, setTestBusy] = useState(false);
 
+  // Önce oturum kontrolü; yetki varsa veriler backend'den yüklenir
   useEffect(() => {
-    setUsers(getUsers());
-    setReports(getReports());
-    setAds(localStorage.getItem(ADS_KEY) === "1");
-    setTestMode(localStorage.getItem(TEST_KEY) === "1");
-    setMailCfg(getMailConfig());
-    setReady(true);
+    adminCheck().then(setAuthed);
   }, []);
+
+  useEffect(() => {
+    if (!authed) return;
+    Promise.all([adminUsers(), adminReports(), adminSettings()]).then(
+      ([u, r, s]) => {
+        setUsers(u);
+        setReports(r);
+        if (s) {
+          setAds(s.ads);
+          setTestMode(s.testMode);
+          setMailCfg(s.mail);
+        }
+        setReady(true);
+      },
+    );
+  }, [authed]);
+
+  async function handleAdminLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setAdminErr("");
+    const r = await adminLogin(adminPass);
+    if (!r.ok) return setAdminErr("Şifre hatalı.");
+    setAuthed(true);
+  }
 
   function patchMail(p: Partial<MailConfig>) {
     setMailSaved(false);
@@ -268,7 +287,12 @@ export default function AdminPage() {
   }
 
   function reload() {
-    setUsers(getUsers());
+    adminUsers().then(setUsers);
+  }
+
+  // saveUser karşılığı: üyeyi backend'e yazar, listeyi tazeler
+  function saveUser(next: User) {
+    void adminSaveUser(next).then(reload);
   }
 
   // Demo (seed) zarflar — duvarla birebir aynı üretim
@@ -396,20 +420,19 @@ export default function AdminPage() {
 
   function toggleAds() {
     const next = !ads;
-    localStorage.setItem(ADS_KEY, next ? "1" : "0");
     setAds(next);
+    void adminSaveSettings({ ads: next });
   }
 
   function toggleTestMode() {
     const next = !testMode;
-    localStorage.setItem(TEST_KEY, next ? "1" : "0");
     setTestMode(next);
+    void adminSaveSettings({ testMode: next });
   }
 
   function resetMemberData() {
-    for (const k of ["mw_users", "mw_session", "mw_codes", "mw_test_deleted"])
-      localStorage.removeItem(k);
-    reload(); // test hesabı yeniden tohumlanır
+    // Tüm üye verileri silinir, test hesabı yeniden tohumlanır
+    void adminResetMembers().then(reload);
     setConfirmReset(false);
   }
 
@@ -465,6 +488,41 @@ export default function AdminPage() {
       demoSpecial: demoEnvs.filter((e) => e.luck >= 50 && !e.sponsored).length,
     };
   }, [users, demoEnvs]);
+
+  // Yetki yokken şifre ekranı; kontrol sürerken boş ekran
+  if (authed === false)
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-neutral-100 px-4">
+        <form
+          onSubmit={handleAdminLogin}
+          className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+        >
+          <h1 className="text-lg font-bold text-neutral-800">
+            🛠️ Admin Paneli
+          </h1>
+          <p className="mt-1 text-xs text-neutral-400">
+            Devam etmek için admin şifresini gir.
+          </p>
+          <input
+            type="password"
+            value={adminPass}
+            onChange={(e) => setAdminPass(e.target.value)}
+            placeholder="Admin şifresi"
+            className={`${inputCls} mt-4`}
+            autoFocus
+          />
+          {adminErr && (
+            <p className="mt-2 text-xs font-medium text-red-500">{adminErr}</p>
+          )}
+          <button
+            type="submit"
+            className="mt-4 w-full cursor-pointer rounded-xl bg-neutral-800 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-neutral-700"
+          >
+            Giriş Yap
+          </button>
+        </form>
+      </main>
+    );
 
   if (!ready) return null;
 
@@ -1079,8 +1137,14 @@ export default function AdminPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              removeReport(r.code, r.ts);
-                              setReports(getReports());
+                              void adminRemoveReport(r.code, r.ts).then(() =>
+                                adminReports().then(setReports),
+                              );
+                              setReports((list) =>
+                                list.filter(
+                                  (x) => !(x.code === r.code && x.ts === r.ts),
+                                ),
+                              );
                             }}
                             className="cursor-pointer rounded-full border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-500 transition-colors hover:border-red-300 hover:text-red-500"
                           >
@@ -1238,7 +1302,7 @@ export default function AdminPage() {
               <button
                 type="button"
                 onClick={() => {
-                  saveMailConfig(mailCfg);
+                  void adminSaveSettings({ mail: mailCfg });
                   setMailSaved(true);
                 }}
                 className="cursor-pointer rounded-xl bg-neutral-800 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-neutral-700"
@@ -1274,7 +1338,8 @@ export default function AdminPage() {
                   onClick={async () => {
                     setTestBusy(true);
                     setTestResult(null);
-                    const r = await sendMail(
+                    const r = await sendTestMail(
+                      mailCfg,
                       testTo.trim(),
                       "Manifest Duvarı — SMTP Testi",
                       "SMTP ayarların çalışıyor! Bu bir test e-postasıdır. ✨",
@@ -1631,8 +1696,7 @@ export default function AdminPage() {
               <button
                 type="button"
                 onClick={() => {
-                  deleteUser(confirmDelUser.id);
-                  reload();
+                  void adminDeleteUser(confirmDelUser.id).then(reload);
                   setConfirmDelUser(null);
                 }}
                 className="flex-1 cursor-pointer rounded-xl bg-red-500 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-600"

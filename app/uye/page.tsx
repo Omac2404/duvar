@@ -13,17 +13,17 @@ import SiteHeader from "../components/SiteHeader";
 import {
   DEMO_GOOGLE,
   currentUser,
-  demoHash,
-  findUser,
+  googleDemoLogin,
+  googleLogin,
+  login,
   passwordIssue,
   registerUser,
-  saveUser,
+  resetPassword,
   sendCode,
-  startSession,
   validEmail,
   verifyCode,
 } from "../lib/auth";
-import { getMailConfig, sendCodeMail, smtpReady } from "../lib/mail";
+import { fetchSettings } from "../lib/api";
 
 // Google Identity Services (GIS) — sayfaya script ile yüklenir
 type GsiButtonConfig = {
@@ -122,6 +122,8 @@ export default function AuthPage() {
   const [pass2, setPass2] = useState("");
   const [code, setCode] = useState("");
   const [resendIn, setResendIn] = useState(0);
+  // Şifre sıfırlama: kod doğrulanınca sunucudan alınan tek kullanımlık jeton
+  const [resetToken, setResetToken] = useState("");
 
   // Kod ekranındaki "yeniden gönder" sayacı
   useEffect(() => {
@@ -132,7 +134,9 @@ export default function AuthPage() {
 
   // Zaten girişliyse panele geç
   useEffect(() => {
-    if (currentUser()) window.location.href = "/panel";
+    currentUser().then((u) => {
+      if (u) window.location.href = "/panel";
+    });
   }, []);
 
   const codeRef = useRef<HTMLInputElement>(null);
@@ -147,32 +151,32 @@ export default function AuthPage() {
     setCode("");
   }
 
-  // Kodu gönder: SMTP yapılandırıldıysa gerçek e-posta; değilse (veya
-  // gönderim başarısız olursa) ekrana düşen demo bildirimi
-  async function dispatchCode(to: string): Promise<boolean> {
-    const r = sendCode(to);
+  // Kodu gönder: sunucu SMTP yapılandırıldıysa gerçek e-posta yollar;
+  // değilse (veya gönderim başarısız olursa) kod yanıtta döner ve ekrana
+  // düşen demo bildirimi gösterilir
+  async function dispatchCode(to: string, requireUser = false): Promise<boolean> {
+    setBusy(true);
+    const r = await sendCode(to, requireUser);
+    setBusy(false);
     if (!r.ok) {
-      setErr(`Yeni kod için ${r.waitSec} sn bekle.`);
+      if (r.waitSec) setErr(`Yeni kod için ${r.waitSec} sn bekle.`);
+      else setErr(r.error ?? "Kod gönderilemedi.");
       return false;
     }
     setResendIn(60);
-    if (smtpReady()) {
-      setBusy(true);
-      const m = await sendCodeMail(to, r.code);
-      setBusy(false);
-      if (m.ok) {
-        // Ek bilgi kutusu gösterilmez — kod ekranı başlığı zaten söylüyor
-        setMail(null);
-        setErr("");
-        return true;
-      }
-      // Gerçek gönderim başarısız: nedeni göster, kod demoya düşsün ki
-      // akış kilitlenmesin (SMTP ayarı buradan teşhis edilir)
-      setErr(
-        `E-posta gönderilemedi: ${m.error ?? "bilinmeyen hata"} — kod demo bildirimi olarak gösterildi.`,
-      );
+    if (r.sent) {
+      // Ek bilgi kutusu gösterilmez — kod ekranı başlığı zaten söylüyor
+      setMail(null);
+      setErr("");
+      return true;
     }
-    setMail({ code: r.code, to });
+    // Gerçek gönderim başarısız olduysa nedeni göster; kod demoya düşer
+    // ki akış kilitlenmesin (SMTP ayarı buradan teşhis edilir)
+    if (r.error)
+      setErr(
+        `E-posta gönderilemedi: ${r.error} — kod demo bildirimi olarak gösterildi.`,
+      );
+    if (r.demoCode) setMail({ code: r.demoCode, to });
     return true;
   }
 
@@ -186,8 +190,8 @@ export default function AuthPage() {
     const pIssue = passwordIssue(pass);
     if (pIssue) return setErr(pIssue);
     if (pass !== pass2) return setErr("Şifreler birbiriyle uyuşmuyor.");
-    const r = registerUser(nm, email, pass);
-    if (!r.ok) return setErr(r.error);
+    const r = await registerUser(nm, email, pass);
+    if (!r.ok) return setErr(r.error ?? "Kayıt başarısız.");
     // switchMode kullanılmaz: dispatchCode'un gönderim mesajları korunur
     if (await dispatchCode(email)) {
       setMode("verify");
@@ -195,20 +199,15 @@ export default function AuthPage() {
     }
   }
 
-  function handleVerify(e: React.FormEvent) {
+  async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
-    const r = verifyCode(email, code);
+    const r = await verifyCode(email, code, "register");
     if (!r.ok) {
       // Deneme hakkı bitti: "Yeniden gönder" beklemeden açılır
       if (r.left === 0) setResendIn(0);
-      return setErr(r.error);
+      return setErr(r.error ?? "Kod doğrulanamadı.");
     }
-    const user = findUser(email);
-    if (!user) return setErr("Üyelik bulunamadı.");
-    user.verified = true;
-    saveUser(user);
-    startSession(user.id);
     setBusy(true);
     window.location.href = "/panel";
   }
@@ -216,16 +215,16 @@ export default function AuthPage() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
-    const user = findUser(email);
-    if (!user || user.passHash !== demoHash(pass))
-      return setErr("E-posta veya şifre hatalı.");
-    // İlk üyelikte doğrulama yarım kaldıysa önce onu tamamlat
-    if (!user.verified) {
-      setInfo("E-postan henüz doğrulanmamış. Sana yeni bir kod gönderdik.");
-      if (await dispatchCode(email)) setMode("verify");
-      return;
+    const r = await login(email, pass);
+    if (!r.ok) {
+      // İlk üyelikte doğrulama yarım kaldıysa önce onu tamamlat
+      if (r.unverified) {
+        setInfo("E-postan henüz doğrulanmamış. Sana yeni bir kod gönderdik.");
+        if (await dispatchCode(email)) setMode("verify");
+        return;
+      }
+      return setErr(r.error ?? "E-posta veya şifre hatalı.");
     }
-    startSession(user.id);
     setBusy(true);
     window.location.href = "/panel";
   }
@@ -234,37 +233,34 @@ export default function AuthPage() {
     e.preventDefault();
     setErr("");
     if (!validEmail(email)) return setErr("Geçerli bir e-posta adresi gir.");
-    if (!findUser(email))
-      return setErr("Bu e-posta ile kayıtlı bir üyelik yok.");
-    if (await dispatchCode(email)) {
+    // requireUser: kayıtlı üyelik yoksa sunucu kod göndermeden hata döner
+    if (await dispatchCode(email, true)) {
       setMode("forgotCode");
       setCode("");
     }
   }
 
-  function handleForgotCode(e: React.FormEvent) {
+  async function handleForgotCode(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
-    const r = verifyCode(email, code);
+    const r = await verifyCode(email, code, "reset");
     if (!r.ok) {
       // Deneme hakkı bitti: "Yeniden gönder" beklemeden açılır
       if (r.left === 0) setResendIn(0);
-      return setErr(r.error);
+      return setErr(r.error ?? "Kod doğrulanamadı.");
     }
+    setResetToken(r.resetToken ?? "");
     switchMode("forgotReset");
   }
 
-  function handleForgotReset(e: React.FormEvent) {
+  async function handleForgotReset(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
     const pIssue = passwordIssue(pass);
     if (pIssue) return setErr(pIssue);
     if (pass !== pass2) return setErr("Şifreler birbiriyle uyuşmuyor.");
-    const user = findUser(email);
-    if (!user) return setErr("Üyelik bulunamadı.");
-    user.passHash = demoHash(pass);
-    saveUser(user);
-    startSession(user.id);
+    const r = await resetPassword(email, resetToken, pass);
+    if (!r.ok) return setErr(r.error ?? "Şifre güncellenemedi.");
     setBusy(true);
     window.location.href = "/panel";
   }
@@ -272,35 +268,17 @@ export default function AuthPage() {
   // Gerçek Google girişi (GIS) — admin panelde Client ID tanımlıysa resmi
   // Google butonu basılır; kimlik jetonundaki e-posta ile üyelik açılır/girilir
   const [googleClientId, setGoogleClientId] = useState("");
-  useEffect(() => setGoogleClientId(getMailConfig().googleClientId), []);
+  useEffect(() => {
+    fetchSettings().then((s) => setGoogleClientId(s.googleClientId));
+  }, []);
   const gisBtnRef = useRef<HTMLDivElement>(null);
 
-  function finishGoogle(credential: string) {
-    try {
-      const payload = JSON.parse(
-        atob(credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")),
-      ) as { email?: string; name?: string };
-      if (!payload.email)
-        return setErr("Google hesabından e-posta alınamadı.");
-      let user = findUser(payload.email);
-      if (!user) {
-        const r = registerUser(
-          payload.name ?? payload.email.split("@")[0],
-          payload.email,
-          "google-" + Date.now(),
-        );
-        if (!r.ok) return setErr(r.error);
-        user = r.user;
-        user.provider = "google";
-        user.verified = true; // Google e-postayı zaten doğrulamıştır
-        saveUser(user);
-      }
-      startSession(user.id);
-      setBusy(true);
-      window.location.href = "/panel";
-    } catch {
-      setErr("Google girişi doğrulanamadı.");
-    }
+  // Kimlik jetonu sunucuda doğrulanır (aud = Client ID); üyelik açılır/girilir
+  async function finishGoogle(credential: string) {
+    const r = await googleLogin(credential);
+    if (!r.ok) return setErr(r.error ?? "Google girişi doğrulanamadı.");
+    setBusy(true);
+    window.location.href = "/panel";
   }
 
   // GIS scriptini yükle ve resmi Google butonunu bas
@@ -340,21 +318,12 @@ export default function AuthPage() {
     s.async = true;
     s.onload = init;
     document.head.appendChild(s);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [googleClientId, mode]);
 
   // Google ile devam (demo): hesap seçiciden onaylanınca üyelik açılır/girilir
-  function handleGooglePick() {
-    let user = findUser(DEMO_GOOGLE.email);
-    if (!user) {
-      const r = registerUser(DEMO_GOOGLE.name, DEMO_GOOGLE.email, "google-" + Date.now());
-      if (!r.ok) return setErr(r.error);
-      user = r.user;
-      user.provider = "google";
-      user.verified = true; // Google e-postayı zaten doğrulamıştır
-      saveUser(user);
-    }
-    startSession(user.id);
+  async function handleGooglePick() {
+    const r = await googleDemoLogin();
+    if (!r.ok) return setErr(r.error ?? "Google girişi doğrulanamadı.");
     setBusy(true);
     window.location.href = "/panel";
   }

@@ -14,7 +14,9 @@ export default function SiteHeader({
   children?: React.ReactNode;
 }) {
   const [me, setMe] = useState<User | null>(null);
-  useEffect(() => setMe(currentUser()), []);
+  useEffect(() => {
+    currentUser().then(setMe);
+  }, []);
 
   return (
     <header className="sticky top-0 z-[1500] flex h-16 shrink-0 items-center justify-center border-b border-neutral-300/70 bg-white/70 backdrop-blur">

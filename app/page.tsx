@@ -11,7 +11,7 @@ import {
 } from "react";
 import SiteHeader from "./components/SiteHeader";
 import CopyBtn from "./components/CopyBtn";
-import { currentUser, getUsers, saveUser, PANEL_COLORS } from "./lib/auth";
+import { currentUser, PANEL_COLORS } from "./lib/auth";
 import {
   BottleVisual,
   GiftBoxVisual,
@@ -19,17 +19,20 @@ import {
   RIBBON_GRADS,
 } from "./components/RewardVisuals";
 import {
-  ADS_KEY,
-  addReport,
   buildEnvelopes,
-  isReported,
   MEMBER_ID_BASE,
   mulberry32,
   REPORT_REASONS,
   SPECIALS,
-  TEST_KEY,
   type Envelope,
 } from "./lib/wallData";
+import {
+  fetchManifests,
+  fetchReportedCodes,
+  fetchSettings,
+  react as apiReact,
+  submitReport,
+} from "./lib/api";
 
 const MONTHS_TR = [
   "Ocak",
@@ -103,29 +106,15 @@ function toBottleData(env: Envelope, rot: number): BottleData {
   };
 }
 
-// Şans dileğini üye manifestine kalıcı yazar (demo zarflarında no-op) —
-// panel ödül akışları duvardan dilenen şansla test edilebilsin
+// Şans dileği backend'e yazılır (demo zarflarında sunucu no-op döner,
+// sayaç oturumluk kalır) — panel ödül akışları duvardan test edilebilsin
 function persistLuck(code: string, delta: number) {
-  for (const u of getUsers()) {
-    const m = u.manifests.find((x) => x.code === code);
-    if (m) {
-      m.luck += delta;
-      saveUser(u);
-      return;
-    }
-  }
+  apiReact(code, "luck", delta);
 }
 
-// Tebrik de üye manifestine kalıcı yazılır (demo zarflarında no-op)
+// Tebrik de backend'e yazılır (demo zarflarında no-op)
 function persistCheer(code: string, delta: number) {
-  for (const u of getUsers()) {
-    const m = u.manifests.find((x) => x.code === code);
-    if (m) {
-      m.cheers += delta;
-      saveUser(u);
-      return;
-    }
-  }
+  apiReact(code, "cheer", delta);
 }
 
 // Görüntülenme: aynı cihaz aynı manifesti günde 1 kez sayar — zarfı
@@ -145,14 +134,7 @@ function registerView(code: string): number {
     if (rec.codes[code]) return 0;
     rec.codes[code] = 1;
     localStorage.setItem(VIEWED_KEY, JSON.stringify(rec));
-    for (const u of getUsers()) {
-      const m = u.manifests.find((x) => x.code === code);
-      if (m) {
-        m.views += 1;
-        saveUser(u);
-        break;
-      }
-    }
+    apiReact(code, "view"); // üye manifestinde kalıcı; demo zarfında no-op
     return 1;
   } catch {
     return 0;
@@ -924,7 +906,9 @@ function ReportButton({
 }) {
   const [open, setOpen] = useState(false);
   const [reported, setReported] = useState(false);
-  useEffect(() => setReported(isReported(code)), [code]);
+  useEffect(() => {
+    fetchReportedCodes().then((codes) => setReported(codes.includes(code)));
+  }, [code]);
 
   if (reported)
     return (
@@ -950,19 +934,7 @@ function ReportButton({
       type="button"
       onClick={(e) => {
         e.stopPropagation();
-        const now = new Date();
-        addReport({
-          code,
-          name,
-          manifest,
-          reason: r,
-          ts: now.getTime(),
-          date: now.toLocaleDateString("tr-TR", {
-            day: "numeric",
-            month: "long",
-            year: "numeric",
-          }),
-        });
+        void submitReport({ code, name, manifest, reason: r }).catch(() => {});
         setReported(true);
         setOpen(false);
       }}
@@ -1047,11 +1019,15 @@ function LetterCard({
   const [cheered, setCheered] = useState(false);
   // Test modu (admin panelden): şans sınırsız ve +10'ar dilenir
   const [testMode, setTestMode] = useState(false);
-  useEffect(() => setTestMode(localStorage.getItem(TEST_KEY) === "1"), []);
+  useEffect(() => {
+    fetchSettings().then((s) => setTestMode(s.testMode));
+  }, []);
   // Şans/tebrik yalnızca üye girişiyle dilenebilir (test modu hariç);
   // girişsiz tıklamada doğrudan üye giriş ekranına yönlendirilir
   const [member, setMember] = useState(false);
-  useEffect(() => setMember(!!currentUser()), []);
+  useEffect(() => {
+    currentUser().then((u) => setMember(!!u));
+  }, []);
   return (
     <div className="max-h-[62vh] overflow-y-auto rounded-[4px] bg-[#fffdf5] px-8 py-7 shadow-[0_16px_44px_rgba(0,0,0,0.35)] max-[520px]:px-5 max-[520px]:py-5">
       <p className="font-hand text-[26px] text-neutral-800 max-[520px]:text-[22px]">
@@ -1280,11 +1256,15 @@ function ManifestPopup({
   const [cheered, setCheered] = useState(false);
   // Test modu (admin panelden): şans sınırsız ve +10'ar dilenir
   const [testMode, setTestMode] = useState(false);
-  useEffect(() => setTestMode(localStorage.getItem(TEST_KEY) === "1"), []);
+  useEffect(() => {
+    fetchSettings().then((s) => setTestMode(s.testMode));
+  }, []);
   // Şans/tebrik yalnızca üye girişiyle dilenebilir (test modu hariç);
   // girişsiz tıklamada doğrudan üye giriş ekranına yönlendirilir
   const [member, setMember] = useState(false);
-  useEffect(() => setMember(!!currentUser()), []);
+  useEffect(() => {
+    currentUser().then((u) => setMember(!!u));
+  }, []);
   // Kapak, mektup dışarıdayken arkada (1), mektup içerideyken önde (30) durur
   const [flapZ, setFlapZ] = useState(30);
   const closingRef = useRef(false);
@@ -1784,15 +1764,15 @@ function ManifestPopup({
 export default function Home() {
   const baseEnvelopes = useMemo(buildEnvelopes, []);
 
-  // Üyelerin panelden yazdığı manifestler duvara eklenir (demo:
-  // localStorage'dan; canlıda backend'den gelir). Baraj kuralları duvarla
-  // aynı uygulanır: 20+ sticker, 50+ özel renk, 150+ şişe
+  // Üyelerin panelden yazdığı manifestler duvara eklenir (backend'den).
+  // Baraj kuralları duvarla aynı uygulanır: 20+ sticker, 50+ özel renk,
+  // 150+ şişe
   const [memberEnvs, setMemberEnvs] = useState<Envelope[]>([]);
   useEffect(() => {
-    const list: Envelope[] = [];
-    let id = MEMBER_ID_BASE;
-    for (const u of getUsers()) {
-      for (const m of u.manifests) {
+    fetchManifests().then((manifests) => {
+      const list: Envelope[] = [];
+      let id = MEMBER_ID_BASE;
+      for (const m of manifests) {
         const seed = mulberry32(m.ts % 2147483647 || 1);
         const pc = PANEL_COLORS[m.colorIdx % PANEL_COLORS.length];
         const d = new Date(m.ts);
@@ -1836,8 +1816,8 @@ export default function Home() {
         if (m.boxed) env.boxed = true;
         list.push(env);
       }
-    }
-    setMemberEnvs(list);
+      setMemberEnvs(list);
+    });
   }, []);
 
   const envelopes = useMemo(
@@ -1845,9 +1825,11 @@ export default function Home() {
     [baseEnvelopes, memberEnvs],
   );
 
-  // Reklam alanları — admin panelden açılıp kapatılır (localStorage bayrağı)
+  // Reklam alanları — admin panelden açılıp kapatılır (backend ayarı)
   const [ads, setAds] = useState(false);
-  useEffect(() => setAds(localStorage.getItem(ADS_KEY) === "1"), []);
+  useEffect(() => {
+    fetchSettings().then((s) => setAds(s.ads));
+  }, []);
   const [selected, setSelected] = useState<{
     env: Envelope;
     origin: Origin;

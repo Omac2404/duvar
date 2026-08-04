@@ -1,8 +1,11 @@
-// ── E-posta gönderim ucu ─────────────────────────────────────────────────
-// SMTP ayarları admin panelde tutulduğu için istekle birlikte gelir (demo
-// katmanı — canlıda ayarlar sunucu config'inde saklanır, istekten alınmaz).
+// ── E-posta test ucu (yalnızca admin) ────────────────────────────────────
+// Admin panelin SMTP testi, formdaki kaydedilmemiş ayarlarla deneme
+// gönderimi yapabilsin diye ayarlar istekle gelir. Üyelik kodları gibi
+// gerçek gönderimler sunucudaki kayıtlı ayarlarla lib/server/mailer'dan
+// yapılır.
 
 import nodemailer from "nodemailer";
+import { isAdmin } from "../../lib/server/session";
 
 type MailBody = {
   smtp?: {
@@ -21,6 +24,8 @@ type MailBody = {
 };
 
 export async function POST(req: Request) {
+  if (!(await isAdmin()))
+    return Response.json({ ok: false, error: "Yetki yok" }, { status: 401 });
   try {
     const { smtp, to, subject, text, html } = (await req.json()) as MailBody;
     if (!smtp?.host || !smtp.fromEmail || !to || !subject)

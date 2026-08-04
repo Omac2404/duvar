@@ -5,8 +5,9 @@
 # Bağımlılıklar
 /node_modules/
 
-# Ortam değişkenleri
+# Ortam değişkenleri (örnek dosya repoya girer)
 .env*
+!.env.example
 
 # Çeşitli
 npm-debug.log*
