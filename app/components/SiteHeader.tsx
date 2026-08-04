@@ -1,7 +1,7 @@
 "use client";
 
 // ── Ortak header — duvar, üyelik ve panel sayfalarının hepsinde görünür ──
-// Ortadaki alan şimdilik placeholder; sağda üyelik durumu (girişliyse
+// Ortada ana sayfaya dönen logo; sağda üyelik durumu (girişliyse
 // avatarlı panel kısayolu, değilse giriş butonu). Duvar sayfası arama
 // panelini children olarak içine asar.
 
@@ -18,11 +18,14 @@ export default function SiteHeader({
 
   return (
     <header className="sticky top-0 z-[1500] flex h-16 shrink-0 items-center justify-center border-b border-neutral-300/70 bg-white/70 backdrop-blur">
-      <a
-        href="/"
-        className="rounded border border-dashed border-neutral-400 px-4 py-1.5 text-xs font-medium uppercase tracking-[0.25em] text-neutral-400 transition-colors hover:text-neutral-500"
-      >
-        Burası header alanı
+      <a href="/" className="flex items-center" aria-label="Manifest Duvarı — ana sayfa">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/logo.png"
+          alt="Manifest Duvarı"
+          className="h-11 w-auto"
+          draggable={false}
+        />
       </a>
 
       {me ? (
