@@ -28,6 +28,8 @@ export type User = {
   provider: "email" | "google";
   verified: boolean;
   createdAt: string; // üyelik tarihi (görünen)
+  createdTs?: number; // üyelik tarihi (ms) — admin panel sıralaması için
+  manifestCount?: number; // admin listesi (manifestler gömülü gelmez)
   manifests: MemberManifest[];
 };
 

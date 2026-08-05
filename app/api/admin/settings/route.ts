@@ -17,6 +17,8 @@ export async function GET() {
     mail: await getMailSettings(db),
     ads: await getSetting(db, "ads", false),
     testMode: await getSetting(db, "testMode", false),
+    aiKey: await getSetting(db, "aiKey", ""),
+    aiEnabled: await getSetting(db, "aiEnabled", false),
   });
 }
 
@@ -26,6 +28,8 @@ export async function PUT(req: Request) {
     mail?: Partial<MailSettings>;
     ads?: boolean;
     testMode?: boolean;
+    aiKey?: string;
+    aiEnabled?: boolean;
   };
   const db = await getDb();
   if (body.mail !== undefined) {
@@ -35,5 +39,9 @@ export async function PUT(req: Request) {
   if (body.ads !== undefined) await setSetting(db, "ads", !!body.ads);
   if (body.testMode !== undefined)
     await setSetting(db, "testMode", !!body.testMode);
+  if (body.aiKey !== undefined)
+    await setSetting(db, "aiKey", String(body.aiKey).trim());
+  if (body.aiEnabled !== undefined)
+    await setSetting(db, "aiEnabled", !!body.aiEnabled);
   return Response.json({ ok: true });
 }

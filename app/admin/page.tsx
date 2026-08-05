@@ -9,23 +9,28 @@
 
 import { useEffect, useMemo, useState } from "react";
 import CopyBtn from "../components/CopyBtn";
-import {
-  GiftBoxVisual,
-  MiniEnvelope,
-  SPECIAL_COLORS,
-  STICKERS,
-} from "../components/RewardVisuals";
+import { SPECIAL_COLORS } from "../components/RewardVisuals";
 import {
   PANEL_COLORS,
   type MemberManifest,
   type User,
 } from "../lib/auth";
-import { buildEnvelopes, TOTAL, type Report } from "../lib/wallData";
+import { type Report } from "../lib/wallData";
 import { sendTestMail, smtpReady, type MailConfig } from "../lib/mail";
 import {
+  adminAddLuck,
   adminCheck,
+  adminDeleteDemos,
+  adminDeleteManifest,
   adminDeleteUser,
+  adminGenerateDemo,
   adminLogin,
+  adminManifests,
+  type AdminManifestItem,
+  type AdminManifestList,
+  adminModeration,
+  adminModerationDecide,
+  adminModerationRun,
   adminRemoveReport,
   adminReports,
   adminResetMembers,
@@ -34,6 +39,13 @@ import {
   adminSettings,
   adminUsers,
 } from "../lib/api";
+import {
+  MOD_CATEGORIES,
+  type ModCategory,
+  type ModProgress,
+  type ModRun,
+} from "../lib/moderation";
+import { adminModerationProgress } from "../lib/api";
 
 const inputCls =
   "w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm " +
@@ -53,25 +65,29 @@ function initials(name: string): string {
     .join("");
 }
 
-function trDate(d: Date): string {
-  return d.toLocaleDateString("tr-TR", {
+// Kontrol penceresi başlığı — "5 Ağustos · 14:00 – 15:00" biçiminde
+function fmtWindow(startMs: number, endMs: number): string {
+  const t = (ms: number) =>
+    new Date(ms).toLocaleTimeString("tr-TR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  const day = new Date(startMs).toLocaleDateString("tr-TR", {
     day: "numeric",
     month: "long",
-    year: "numeric",
   });
+  return `${day} · ${t(startMs)} – ${t(endMs)}`;
 }
 
-// Benzersiz zarf kodu — üye + demo kodlarının tamamına karşı kontrol edilir
-function genCode(taken: Set<string>): string {
-  const L = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  let code = "";
-  do {
-    code =
-      String(10000 + Math.floor(Math.random() * 90000)) +
-      L[Math.floor(Math.random() * 26)] +
-      L[Math.floor(Math.random() * 26)];
-  } while (taken.has(code));
-  return code;
+// Aralık taraması başlığı — "12 Mart 2026 – 5 Ağustos 2026"
+function fmtRange(startMs: number, endMs: number): string {
+  const d = (ms: number) =>
+    new Date(ms).toLocaleDateString("tr-TR", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  return `${d(startMs)} – ${d(endMs)}`;
 }
 
 // Rozet çipi — manifest durum etiketleri
@@ -159,67 +175,6 @@ function pendingRewards(m: MemberManifest): string[] {
   return p;
 }
 
-// ── Manifest editörü form durumu ─────────────────────────────────────────
-type Form = {
-  name: string;
-  text: string;
-  date: string; // yyyy-mm-dd
-  luck: number;
-  cheers: number;
-  views: number;
-  colorIdx: number;
-  sticker: string; // "" = seçilmemiş
-  special: number; // -1 = seçilmemiş
-  bottled: boolean;
-  boxed: boolean;
-  realized: boolean;
-};
-
-function emptyForm(): Form {
-  return {
-    name: "",
-    text: "",
-    date: new Date().toISOString().slice(0, 10),
-    luck: 0,
-    cheers: 0,
-    views: 0,
-    colorIdx: 0,
-    sticker: "",
-    special: -1,
-    bottled: false,
-    boxed: false,
-    realized: false,
-  };
-}
-
-// Hazır senaryolar — tek tıkla test edilecek duruma getirir
-const PRESETS: { label: string; patch: Partial<Form> }[] = [
-  {
-    label: "Sade (5⭐)",
-    patch: { luck: 5, sticker: "", special: -1, bottled: false, boxed: false },
-  },
-  {
-    label: "Sticker bekliyor (25⭐)",
-    patch: { luck: 25, sticker: "", special: -1, bottled: false, boxed: false },
-  },
-  {
-    label: "Renk bekliyor (60⭐)",
-    patch: { luck: 60, sticker: "⭐", special: -1, bottled: false, boxed: false },
-  },
-  {
-    label: "Şişe bekliyor (170⭐)",
-    patch: { luck: 170, sticker: "⭐", special: 0, bottled: false, boxed: false },
-  },
-  {
-    label: "Kutu bekliyor (270⭐)",
-    patch: { luck: 270, sticker: "⭐", special: 1, bottled: true, boxed: false },
-  },
-  {
-    label: "Tam donanım (300⭐)",
-    patch: { luck: 300, sticker: "🍀", special: 2, bottled: true, boxed: true },
-  },
-];
-
 export default function AdminPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [ready, setReady] = useState(false);
@@ -228,11 +183,17 @@ export default function AdminPage() {
   const [adminPass, setAdminPass] = useState("");
   const [adminErr, setAdminErr] = useState("");
   const [tab, setTab] = useState<
-    "overview" | "members" | "manifests" | "demo" | "reports" | "mail"
+    "overview" | "members" | "manifests" | "reports" | "mail"
   >("overview");
 
   // Ziyaretçi bildirimleri (şikâyetler) — duvar popup'larından gelir
   const [reports, setReports] = useState<Report[]>([]);
+
+  // Saatlik AI kontrolü — koşular ve takılan manifestler
+  const [modRuns, setModRuns] = useState<ModRun[]>([]);
+  const [openRun, setOpenRun] = useState<number | null>(null);
+  const [modBusy, setModBusy] = useState(false);
+  const [flagBusy, setFlagBusy] = useState<number | null>(null);
 
   // Reklam alanları + test modu bayrakları (duvar sayfası bunları okur)
   const [ads, setAds] = useState(false);
@@ -240,7 +201,41 @@ export default function AdminPage() {
 
   // Arama alanları — üyeler (isim/e-posta) ve üye manifestleri (kod/rumuz)
   const [mSearch, setMSearch] = useState("");
+  const [mSort, setMSort] = useState<"new" | "old">("new");
   const [manSearch, setManSearch] = useState("");
+
+  // Üye manifestleri: sunucu taraflı sayfalı liste (100 bin+ kayıt için)
+  const [manSort, setManSort] = useState<"new" | "old">("new");
+  const [manFilter, setManFilter] = useState("all");
+  const [manPage, setManPage] = useState(0);
+  const [manList, setManList] = useState<AdminManifestList | null>(null);
+  const [luckAmt, setLuckAmt] = useState<Record<string, string>>({});
+
+  // Silme gerekçesi — modaldaki seçim ("none" = gerekçesiz bildirim)
+  const [delReason, setDelReason] = useState("none");
+
+  // Demo üretimi (Ayarlar) — ölçek testleri için toplu demo manifest
+  const [demoCount, setDemoCount] = useState("1000");
+  const [demoBusy, setDemoBusy] = useState(false);
+  const [demoMsg, setDemoMsg] = useState("");
+
+  // Yapay zeka denetim anahtarı — Ayarlar sekmesinden girilir
+  const [aiKey, setAiKey] = useState("");
+  const [aiSaved, setAiSaved] = useState(false);
+  const [aiEnabled, setAiEnabled] = useState(false);
+
+  // Süren denetimin ilerlemesi — "Şimdi kontrol et" sırasında yoklanır
+  const [modProg, setModProg] = useState<ModProgress | null>(null);
+  const [modAnim, setModAnim] = useState(0); // aktif pencerede geçen ~saniye
+  const [modErr, setModErr] = useState("");
+
+  // Tarih+saat aralığı taraması — admin istediği aralıktaki her şeyi taratır
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
+
+  // Koşu listesi: tarihe göre filtre + 20'şerli sayfalama
+  const [modSearch, setModSearch] = useState("");
+  const [modPage, setModPage] = useState(0);
 
   // Bildirim ayarları — SMTP + Google Client ID (üye ekranı bunları okur)
   const [mailCfg, setMailCfg] = useState<MailConfig | null>(null);
@@ -259,18 +254,24 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!authed) return;
-    Promise.all([adminUsers(), adminReports(), adminSettings()]).then(
-      ([u, r, s]) => {
-        setUsers(u);
-        setReports(r);
-        if (s) {
-          setAds(s.ads);
-          setTestMode(s.testMode);
-          setMailCfg(s.mail);
-        }
-        setReady(true);
-      },
-    );
+    Promise.all([
+      adminUsers(),
+      adminReports(),
+      adminSettings(),
+      adminModeration(),
+    ]).then(([u, r, s, m]) => {
+      setUsers(u);
+      setReports(r);
+      setModRuns(m);
+      if (s) {
+        setAds(s.ads);
+        setTestMode(s.testMode);
+        setMailCfg(s.mail);
+        setAiKey(s.aiKey ?? "");
+        setAiEnabled(!!s.aiEnabled);
+      }
+      setReady(true);
+    });
   }, [authed]);
 
   async function handleAdminLogin(e: React.FormEvent) {
@@ -290,113 +291,155 @@ export default function AdminPage() {
     adminUsers().then(setUsers);
   }
 
+  // ── Saatlik AI kontrolü ────────────────────────────────────────────────
+
+  function refreshModeration() {
+    void adminModeration().then(setModRuns);
+  }
+
+  function generateDemos() {
+    const n = Number(demoCount);
+    if (!n || n < 1) return setDemoMsg("Geçerli bir adet girin.");
+    setDemoBusy(true);
+    setDemoMsg("Üretiliyor… (büyük adetlerde ~30 sn sürebilir)");
+    void adminGenerateDemo(n)
+      .then((r) => {
+        setDemoMsg(
+          r.ok
+            ? `${(r.inserted ?? 0).toLocaleString("tr-TR")} demo üretildi — toplam ${(r.totalDemo ?? 0).toLocaleString("tr-TR")} demo var.`
+            : (r.error ?? "Üretim başarısız."),
+        );
+        refreshManifests();
+        reload();
+      })
+      .finally(() => setDemoBusy(false));
+  }
+
+  function deleteDemos() {
+    if (!window.confirm("Tüm demo manifestler silinsin mi?")) return;
+    setDemoBusy(true);
+    void adminDeleteDemos()
+      .then((r) => {
+        setDemoMsg(
+          `${(r.deleted ?? 0).toLocaleString("tr-TR")} demo manifest silindi.`,
+        );
+        refreshManifests();
+        reload();
+      })
+      .finally(() => setDemoBusy(false));
+  }
+
+  function saveAiKey() {
+    void adminSaveSettings({ aiKey: aiKey.trim() }).then(() =>
+      setAiSaved(true),
+    );
+  }
+
+  function toggleAiEnabled() {
+    const next = !aiEnabled;
+    setAiEnabled(next);
+    void adminSaveSettings({ aiEnabled: next });
+  }
+
+  function startModeration(range?: { from: number; to: number }) {
+    setModBusy(true);
+    setModErr("");
+    setModProg({
+      active: true,
+      startedAt: Date.now(),
+      totalWindows: 0,
+      doneWindows: 0,
+      scanning: 0,
+    });
+    // Sunucudaki gerçek ilerleme ~saniyede bir yoklanır; aynı pencerede
+    // beklerken çubuk zamanla yumuşakça ilerlesin diye modAnim sayılır
+    let anim = 0;
+    let lastDone = -1;
+    const iv = setInterval(() => {
+      void adminModerationProgress().then((p) => {
+        if (!p) return;
+        if (p.doneWindows !== lastDone) {
+          lastDone = p.doneWindows;
+          anim = 0;
+        } else {
+          anim += 0.8;
+        }
+        setModAnim(anim);
+        setModProg(p);
+      });
+    }, 800);
+    void adminModerationRun(range)
+      .then((r) => {
+        if (r?.error) setModErr(r.error);
+        refreshModeration();
+      })
+      .finally(() => {
+        clearInterval(iv);
+        setModProg(null);
+        setModAnim(0);
+        setModBusy(false);
+      });
+  }
+
+  function runRangeScanNow() {
+    if (!rangeFrom || !rangeTo)
+      return setModErr("Başlangıç ve bitiş tarih-saatini seçin.");
+    const from = new Date(rangeFrom).getTime();
+    const to = new Date(rangeTo).getTime();
+    if (isNaN(from) || isNaN(to) || from >= to)
+      return setModErr("Tarih aralığı geçersiz.");
+    startModeration({ from, to });
+  }
+
+  // Çubuk doluluğu: biten pencereler + aktif pencerenin zaman tahmini
+  // (tek pencere ~20 sn varsayımıyla, %95'te bekletilir)
+  const modBarFrac = modProg?.active
+    ? (modProg.doneWindows + Math.min(modAnim / 20, 0.95)) /
+      Math.max(1, modProg.totalWindows)
+    : modBusy
+      ? 0.05
+      : 0;
+
+  function decideFlag(id: number, action: "approve" | "delete") {
+    setFlagBusy(id);
+    void adminModerationDecide(id, action)
+      .then(() => {
+        refreshModeration();
+        if (action === "delete") reload(); // üyenin manifest listesi de değişti
+      })
+      .finally(() => setFlagBusy(null));
+  }
+
+  const modPending = modRuns.reduce(
+    (n, r) => n + r.flags.filter((f) => f.status === "pending").length,
+    0,
+  );
+
+  // Tarihe göre filtre: seçilen günle kesişen koşular gösterilir
+  const modFiltered = modSearch
+    ? modRuns.filter((r) => {
+        const d0 = new Date(modSearch + "T00:00:00").getTime();
+        return r.windowEnd >= d0 && r.windowStart < d0 + 86400000;
+      })
+    : modRuns;
+  const MOD_PER_PAGE = 20;
+  const modPages = Math.max(1, Math.ceil(modFiltered.length / MOD_PER_PAGE));
+  const modPageSafe = Math.min(modPage, modPages - 1);
+  const modPageRuns = modFiltered.slice(
+    modPageSafe * MOD_PER_PAGE,
+    (modPageSafe + 1) * MOD_PER_PAGE,
+  );
+
   // saveUser karşılığı: üyeyi backend'e yazar, listeyi tazeler
   function saveUser(next: User) {
     void adminSaveUser(next).then(reload);
   }
 
-  // Demo (seed) zarflar — duvarla birebir aynı üretim
-  const demoEnvs = useMemo(buildEnvelopes, []);
-
-  // ── Editör ─────────────────────────────────────────────────────────────
-  // userId + code=null → yeni manifest; code dolu → düzenleme
-  const [editor, setEditor] = useState<{
-    userId: string;
-    code: string | null;
-  } | null>(null);
-  const [form, setForm] = useState<Form>(emptyForm());
-  const [formErr, setFormErr] = useState("");
-
-  function patch(p: Partial<Form>) {
-    setForm((f) => ({ ...f, ...p }));
-  }
-
-  function openCreate(userId: string) {
-    setForm(emptyForm());
-    setFormErr("");
-    setEditor({ userId, code: null });
-  }
-
-  function openEdit(u: User, m: MemberManifest) {
-    setForm({
-      name: m.name,
-      text: m.manifest,
-      date: new Date(m.ts).toISOString().slice(0, 10),
-      luck: m.luck,
-      cheers: m.cheers,
-      views: m.views,
-      colorIdx: m.colorIdx,
-      sticker: m.sticker ?? "",
-      special: m.special ?? -1,
-      bottled: !!m.bottled,
-      boxed: !!m.boxed,
-      realized: m.realized,
-    });
-    setFormErr("");
-    setEditor({ userId: u.id, code: m.code });
-  }
-
-  function saveEditor() {
-    if (!editor) return;
-    const u = users.find((x) => x.id === editor.userId);
-    if (!u) return;
-    if (form.name.trim().length < 2)
-      return setFormErr("Rumuz en az 2 karakter olmalı.");
-    if (form.text.trim().length < 10)
-      return setFormErr("Manifest en az 10 karakter olmalı.");
-    const d = new Date(form.date + "T12:00:00");
-    if (isNaN(d.getTime())) return setFormErr("Tarih geçersiz.");
-
-    const next: User = { ...u, manifests: [...u.manifests] };
-    const existing = editor.code
-      ? next.manifests.find((m) => m.code === editor.code)
-      : undefined;
-
-    // Kod: düzenlemede korunur; yeni manifestte tüm kodlara karşı benzersiz
-    let code = editor.code;
-    if (!code) {
-      const taken = new Set<string>([
-        ...demoEnvs.map((e) => e.code),
-        ...users.flatMap((x) => x.manifests.map((m) => m.code)),
-      ]);
-      code = genCode(taken);
-    }
-
-    const m: MemberManifest = {
-      code,
-      name: form.name.trim(),
-      manifest: form.text.trim(),
-      date: trDate(d),
-      ts: d.getTime(),
-      luck: Math.max(0, form.luck),
-      cheers: Math.max(0, form.cheers),
-      views: Math.max(0, form.views),
-      colorIdx: form.colorIdx,
-      realized: form.realized,
-    };
-    if (form.sticker) m.sticker = form.sticker;
-    if (form.special >= 0) m.special = form.special;
-    if (form.bottled) m.bottled = true;
-    if (form.boxed) m.boxed = true;
-    if (form.realized)
-      m.realizedDate = existing?.realizedDate ?? trDate(new Date());
-
-    if (existing) {
-      next.manifests = next.manifests.map((x) => (x.code === code ? m : x));
-    } else {
-      next.manifests.unshift(m); // admin tanımında yıllık kota uygulanmaz
-    }
-    saveUser(next);
-    reload();
-    setEditor(null);
-  }
 
   // ── Onaylar ────────────────────────────────────────────────────────────
   const [confirmDelUser, setConfirmDelUser] = useState<User | null>(null);
-  const [confirmDelMan, setConfirmDelMan] = useState<{
-    u: User;
-    m: MemberManifest;
-  } | null>(null);
+  const [confirmDelMan, setConfirmDelMan] =
+    useState<AdminManifestItem | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
 
   function toggleVerified(u: User) {
@@ -404,18 +447,53 @@ export default function AdminPage() {
     reload();
   }
 
-  function delManifest(u: User, code: string) {
-    saveUser({ ...u, manifests: u.manifests.filter((m) => m.code !== code) });
-    reload();
+  // Manifest listesi sunucudan gelir; arama yazarken kısa debounce
+  function refreshManifests() {
+    void adminManifests({
+      q: manSearch.trim(),
+      filter: manFilter,
+      sort: manSort,
+      page: manPage,
+    }).then((r) => r && setManList(r));
+  }
+  useEffect(() => {
+    if (!authed) return;
+    const t = setTimeout(refreshManifests, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed, manSearch, manFilter, manSort, manPage]);
+
+  const manPages = Math.max(
+    1,
+    Math.ceil((manList?.filtered ?? 0) / (manList?.perPage ?? 50)),
+  );
+  const EMPTY_COUNTS = {
+    total: 0, sticker: 0, special: 0, bottled: 0,
+    boxed: 0, realized: 0, demo: 0, totalLuck: 0,
+  };
+  const manCounts = manList?.counts ?? EMPTY_COUNTS;
+
+  // Gerekçeli silme — manifest kaldırılır, sahibine bilgilendirme maili
+  // gider (delReason "none" ise gerekçesiz bildirim)
+  function delManifestWithReason() {
+    if (!confirmDelMan) return;
+    void adminDeleteManifest(
+      confirmDelMan.code,
+      delReason === "none" ? null : delReason,
+    ).then(() => {
+      refreshManifests();
+      reload();
+      refreshModeration();
+    });
     setConfirmDelMan(null);
   }
 
-  function setLuckQuick(u: User, code: string, luck: number) {
-    saveUser({
-      ...u,
-      manifests: u.manifests.map((m) => (m.code === code ? { ...m, luck } : m)),
-    });
-    reload();
+  // Şans gönderme — girilen miktar manifestin şansına eklenir
+  function sendLuck(code: string) {
+    const amt = Number(luckAmt[code] ?? "");
+    if (!amt || amt <= 0) return;
+    void adminAddLuck(code, amt).then(refreshManifests);
+    setLuckAmt((s) => ({ ...s, [code]: "" }));
   }
 
   function toggleAds() {
@@ -436,58 +514,20 @@ export default function AdminPage() {
     setConfirmReset(false);
   }
 
-  // ── Demo sekmesi: arama + filtre + sayfalama ───────────────────────────
-  const [dSearch, setDSearch] = useState("");
-  const [dFilter, setDFilter] = useState("all");
-  const [dPage, setDPage] = useState(0);
-  const PER_PAGE = 50;
-
-  const demoFiltered = useMemo(() => {
-    const q = dSearch.trim().toUpperCase();
-    return demoEnvs.filter((e) => {
-      if (q && !e.code.includes(q) && !e.name.toUpperCase().includes(q))
-        return false;
-      switch (dFilter) {
-        case "sticker":
-          return !!e.sticker && !e.sponsored;
-        case "special":
-          return e.luck >= 50 && !e.sponsored;
-        case "bottled":
-          return !!e.bottled && !e.boxed;
-        case "boxed":
-          return !!e.boxed;
-        case "sponsored":
-          return !!e.sponsored;
-        case "realized":
-          return !!e.realized;
-        default:
-          return true;
-      }
-    });
-  }, [demoEnvs, dSearch, dFilter]);
-
-  const dPages = Math.max(1, Math.ceil(demoFiltered.length / PER_PAGE));
-  const dPageSafe = Math.min(dPage, dPages - 1);
-
-  // ── Genel bakış istatistikleri ─────────────────────────────────────────
-  const stats = useMemo(() => {
-    const all = users.flatMap((u) => u.manifests.map((m) => ({ u, m })));
-    return {
+  // ── Genel bakış istatistikleri — manifest sayıları sunucudan gelir ─────
+  const stats = useMemo(
+    () => ({
       members: users.length,
       verified: users.filter((u) => u.verified).length,
-      google: users.filter((u) => u.provider === "google").length,
-      manifests: all.length,
-      realized: all.filter((x) => x.m.realized).length,
-      bottled: all.filter((x) => x.m.bottled && !x.m.boxed).length,
-      boxed: all.filter((x) => x.m.boxed).length,
-      totalLuck: all.reduce((s, x) => s + x.m.luck, 0),
-      demoBottled: demoEnvs.filter((e) => e.bottled && !e.boxed).length,
-      demoBoxed: demoEnvs.filter((e) => e.boxed).length,
-      demoSponsored: demoEnvs.filter((e) => e.sponsored).length,
-      demoRealized: demoEnvs.filter((e) => e.realized).length,
-      demoSpecial: demoEnvs.filter((e) => e.luck >= 50 && !e.sponsored).length,
-    };
-  }, [users, demoEnvs]);
+      manifests: manCounts.total,
+      realized: manCounts.realized,
+      bottled: manCounts.bottled,
+      boxed: manCounts.boxed,
+      demo: manCounts.demo,
+      totalLuck: manCounts.totalLuck,
+    }),
+    [users, manCounts],
+  );
 
   // Yetki yokken şifre ekranı; kontrol sürerken boş ekran
   if (authed === false)
@@ -526,40 +566,30 @@ export default function AdminPage() {
 
   if (!ready) return null;
 
-  const allManifests = users.flatMap((u) => u.manifests.map((m) => ({ u, m })));
 
-  // Üye araması: isim veya e-posta
+  // Üye araması: isim veya e-posta; kayıt tarihine göre sıralanır
   const mQ = mSearch.trim().toLocaleLowerCase("tr");
-  const usersFiltered = mQ
-    ? users.filter(
-        (u) =>
-          u.name.toLocaleLowerCase("tr").includes(mQ) ||
-          u.email.toLowerCase().includes(mQ),
-      )
-    : users;
+  const usersFiltered = (
+    mQ
+      ? users.filter(
+          (u) =>
+            u.name.toLocaleLowerCase("tr").includes(mQ) ||
+            u.email.toLowerCase().includes(mQ),
+        )
+      : [...users]
+  ).sort((a, b) =>
+    mSort === "new"
+      ? (b.createdTs ?? 0) - (a.createdTs ?? 0)
+      : (a.createdTs ?? 0) - (b.createdTs ?? 0),
+  );
 
-  // Manifest araması: zarf kodu, rumuz veya sahibinin adı
-  const manQ = manSearch.trim();
-  const manFiltered = manQ
-    ? allManifests.filter(
-        ({ u, m }) =>
-          m.code.toUpperCase().includes(manQ.toUpperCase()) ||
-          m.name
-            .toLocaleLowerCase("tr")
-            .includes(manQ.toLocaleLowerCase("tr")) ||
-          u.name
-            .toLocaleLowerCase("tr")
-            .includes(manQ.toLocaleLowerCase("tr")),
-      )
-    : allManifests;
 
   const TABS = [
-    { key: "overview", label: "📊 Genel Bakış" },
-    { key: "members", label: `👥 Üyeler (${users.length})` },
-    { key: "manifests", label: `💌 Üye Manifestleri (${allManifests.length})` },
-    { key: "demo", label: `🧪 Demo Manifestler (${TOTAL})` },
-    { key: "reports", label: `🚩 Bildirilenler (${reports.length})` },
-    { key: "mail", label: "🔔 Bildirim Ayarları" },
+    { key: "overview", label: "Genel Bakış" },
+    { key: "members", label: "Üyeler" },
+    { key: "manifests", label: "Manifestler" },
+    { key: "reports", label: "Bildirilenler" },
+    { key: "mail", label: "Ayarlar" },
   ] as const;
 
   return (
@@ -643,21 +673,6 @@ export default function AdminPage() {
                   <p className="text-[11px] text-neutral-400">{sub}</p>
                 </div>
               ))}
-            </section>
-
-            {/* Demo duvar istatistikleri */}
-            <section className="rounded-2xl bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-bold text-neutral-700">
-                🧱 Demo Duvar (seed)
-              </h2>
-              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm text-neutral-600">
-                <span>✉️ {TOTAL.toLocaleString("tr-TR")} zarf</span>
-                <span>🍾 {stats.demoBottled} şişede</span>
-                <span>🎁 {stats.demoBoxed} kutuda</span>
-                <span>🎨 {stats.demoSpecial} özel renk</span>
-                <span>📣 {stats.demoSponsored} sponsorlu</span>
-                <span>✓ {stats.demoRealized} gerçekleşmiş</span>
-              </div>
             </section>
 
             {/* Ayarlar */}
@@ -747,11 +762,17 @@ export default function AdminPage() {
               placeholder="İsim veya e-posta ara…"
               className={`${inputCls} max-w-64`}
             />
-            {mQ && (
-              <span className="text-xs text-neutral-400">
-                {usersFiltered.length} sonuç
-              </span>
-            )}
+            <select
+              value={mSort}
+              onChange={(e) => setMSort(e.target.value as "new" | "old")}
+              className="cursor-pointer rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
+            >
+              <option value="new">En yeniden en eskiye</option>
+              <option value="old">En eskiden en yeniye</option>
+            </select>
+            <span className="ml-auto text-xs font-semibold text-neutral-500">
+              {usersFiltered.length} / {users.length} üye
+            </span>
           </div>
           <section className="overflow-x-auto rounded-2xl bg-white shadow-sm">
             <table className="w-full min-w-[760px] border-collapse">
@@ -818,24 +839,15 @@ export default function AdminPage() {
                       <td className={`${tdCls} whitespace-nowrap text-xs`}>
                         {u.createdAt}
                       </td>
-                      <td className={tdCls}>{u.manifests.length}</td>
+                      <td className={tdCls}>{u.manifestCount ?? 0}</td>
                       <td className={`${tdCls} text-right`}>
-                        <span className="flex justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => openCreate(u.id)}
-                            className="cursor-pointer whitespace-nowrap rounded-full bg-neutral-800 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-neutral-700"
-                          >
-                            ✍️ Manifest Tanımla
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDelUser(u)}
-                            className="cursor-pointer rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-500 transition-colors hover:bg-red-100"
-                          >
-                            Sil
-                          </button>
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDelUser(u)}
+                          className="cursor-pointer rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-500 transition-colors hover:bg-red-100"
+                        >
+                          Sil
+                        </button>
                       </td>
                     </tr>
                   );
@@ -853,21 +865,41 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ── Üye Manifestleri ── */}
+        {/* ── Üye Manifestleri — sunucu taraflı sayfalı liste ── */}
         {tab === "manifests" && (
           <div className="mt-5 space-y-3">
           <div className="flex flex-wrap items-center gap-2.5">
             <input
               value={manSearch}
-              onChange={(e) => setManSearch(e.target.value)}
+              onChange={(e) => { setManSearch(e.target.value); setManPage(0); }}
               placeholder="Zarf kodu, rumuz veya sahip ara…"
               className={`${inputCls} max-w-64`}
             />
-            {manQ && (
-              <span className="text-xs text-neutral-400">
-                {manFiltered.length} sonuç
-              </span>
-            )}
+            <select
+              value={manSort}
+              onChange={(e) => { setManSort(e.target.value as "new" | "old"); setManPage(0); }}
+              className="cursor-pointer rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
+            >
+              <option value="new">En yeniden en eskiye</option>
+              <option value="old">En eskiden en yeniye</option>
+            </select>
+            <select
+              value={manFilter}
+              onChange={(e) => { setManFilter(e.target.value); setManPage(0); }}
+              className="cursor-pointer rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
+            >
+              <option value="all">Tümü ({manCounts.total.toLocaleString("tr-TR")})</option>
+              <option value="member">Üye ({(manCounts.total - manCounts.demo).toLocaleString("tr-TR")})</option>
+              <option value="demo">Demo ({manCounts.demo.toLocaleString("tr-TR")})</option>
+              <option value="sticker">Sticker&apos;lı ({manCounts.sticker.toLocaleString("tr-TR")})</option>
+              <option value="special">Özel renkli ({manCounts.special.toLocaleString("tr-TR")})</option>
+              <option value="bottled">Şişede ({manCounts.bottled.toLocaleString("tr-TR")})</option>
+              <option value="boxed">Kutuda ({manCounts.boxed.toLocaleString("tr-TR")})</option>
+              <option value="realized">Gerçekleşmiş ({manCounts.realized.toLocaleString("tr-TR")})</option>
+            </select>
+            <span className="ml-auto text-xs font-semibold text-neutral-500">
+              {(manList?.filtered ?? 0).toLocaleString("tr-TR")} / {manCounts.total.toLocaleString("tr-TR")} manifest
+            </span>
           </div>
           <section className="overflow-x-auto rounded-2xl bg-white shadow-sm">
             <table className="w-full min-w-[900px] border-collapse">
@@ -884,49 +916,49 @@ export default function AdminPage() {
                 </tr>
               </thead>
               <tbody>
-                {manFiltered.map(({ u, m }) => (
+                {(manList?.items ?? []).map((m) => (
                   <tr
                     key={m.code}
                     className="border-b border-neutral-50 last:border-0 hover:bg-neutral-50/60"
                   >
                     <td className={`${tdCls} whitespace-nowrap`}>
-                      <span className="flex items-center gap-1 font-mono text-xs font-bold text-sky-700">
+                      <span className="flex items-center gap-1.5 font-mono text-xs font-bold text-sky-700">
                         {m.code}
                         <CopyBtn text={m.code} />
+                        {m.demo && (
+                          <span className="rounded bg-neutral-100 px-1.5 py-0.5 font-sans text-[9px] font-semibold uppercase text-neutral-400">
+                            demo
+                          </span>
+                        )}
                       </span>
                     </td>
-                    <td className={`${tdCls} max-w-28 truncate text-xs`}>
-                      {u.name}
-                    </td>
-                    <td
-                      className={`${tdCls} max-w-32 truncate font-semibold`}
-                    >
-                      {m.name}
-                    </td>
+                    <td className={`${tdCls} max-w-28 truncate text-xs`}>{m.owner}</td>
+                    <td className={`${tdCls} max-w-32 truncate font-semibold`}>{m.name}</td>
                     <td className={`${tdCls} max-w-56`}>
-                      <span className="block truncate text-xs text-neutral-500">
-                        {m.manifest}
-                      </span>
+                      <span className="block truncate text-xs text-neutral-500">{m.manifest}</span>
                     </td>
                     <td className={`${tdCls} whitespace-nowrap`}>
-                      {/* Hızlı şans ayarı — barajları tek tıkla test et */}
-                      <select
-                        value={m.luck}
-                        onChange={(e) =>
-                          setLuckQuick(u, m.code, Number(e.target.value))
-                        }
-                        title="Şansı hızlı ayarla (barajlar: 20/50/150/250)"
-                        className="cursor-pointer rounded-lg border border-neutral-200 bg-white px-1.5 py-1 text-xs text-neutral-700 outline-none"
-                      >
-                        {![0, 5, 25, 60, 170, 270, 500].includes(m.luck) && (
-                          <option value={m.luck}>⭐ {m.luck}</option>
-                        )}
-                        {[0, 5, 25, 60, 170, 270, 500].map((v) => (
-                          <option key={v} value={v}>
-                            ⭐ {v}
-                          </option>
-                        ))}
-                      </select>
+                      {/* Şans gönder — girilen miktar mevcut şansa eklenir */}
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-amber-600">⭐ {m.luck}</span>
+                        <input
+                          value={luckAmt[m.code] ?? ""}
+                          onChange={(e) =>
+                            setLuckAmt((s) => ({ ...s, [m.code]: e.target.value.replace(/\D/g, "") }))
+                          }
+                          placeholder="miktar"
+                          inputMode="numeric"
+                          className="w-16 rounded-lg border border-neutral-200 bg-white px-1.5 py-1 text-xs text-neutral-700 outline-none placeholder:text-neutral-300"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => sendLuck(m.code)}
+                          disabled={!Number(luckAmt[m.code] ?? "")}
+                          className="cursor-pointer rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-200 disabled:cursor-default disabled:opacity-40"
+                        >
+                          Gönder
+                        </button>
+                      </span>
                     </td>
                     <td className={tdCls}>
                       <ManifestChips m={m} />
@@ -936,155 +968,353 @@ export default function AdminPage() {
                         </Chip>
                       ))}
                     </td>
-                    <td className={`${tdCls} whitespace-nowrap text-xs`}>
-                      {m.date}
-                    </td>
+                    <td className={`${tdCls} whitespace-nowrap text-xs`}>{m.date}</td>
                     <td className={`${tdCls} text-right`}>
-                      <span className="flex justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(u, m)}
-                          className="cursor-pointer rounded-full border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-100"
-                        >
-                          Düzenle
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDelMan({ u, m })}
-                          className="cursor-pointer rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-500 transition-colors hover:bg-red-100"
-                        >
-                          Sil
-                        </button>
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => { setDelReason("none"); setConfirmDelMan(m); }}
+                        className="cursor-pointer rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-500 transition-colors hover:bg-red-100"
+                      >
+                        Sil
+                      </button>
                     </td>
                   </tr>
                 ))}
-                {manFiltered.length === 0 && (
+                {(manList?.items ?? []).length === 0 && (
                   <tr>
                     <td className={`${tdCls} text-neutral-400`} colSpan={8}>
-                      {manQ
-                        ? "Aramaya uyan manifest yok."
-                        : "Üye manifesti yok. Üyeler sekmesinden tanımlayabilirsin."}
+                      Kayıt yok.
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </section>
-          </div>
-        )}
-
-        {/* ── Demo Manifestler ── */}
-        {tab === "demo" && (
-          <div className="mt-5 space-y-4">
-            <p className="rounded-xl bg-sky-50 px-4 py-2.5 text-xs leading-relaxed text-sky-700">
-              Demo zarflar sabit tohumdan (seed 20260726) deterministik üretilir
-              — burada salt okunur listelenir, düzenlenemez. Şans piramidi:
-              çoğunluk sade, sonra sticker&apos;lı (20+), özel renkli (50+),
-              şişedekiler (150+) ve en nadiren kutudakiler (250+).
-            </p>
-            <div className="flex flex-wrap items-center gap-2.5">
-              <input
-                value={dSearch}
-                onChange={(e) => {
-                  setDSearch(e.target.value);
-                  setDPage(0);
-                }}
-                placeholder="Kod veya rumuz ara…"
-                className={`${inputCls} max-w-56`}
-              />
-              <select
-                value={dFilter}
-                onChange={(e) => {
-                  setDFilter(e.target.value);
-                  setDPage(0);
-                }}
-                className="cursor-pointer rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
-              >
-                <option value="all">Tümü</option>
-                <option value="sticker">Sticker&apos;lı (20+)</option>
-                <option value="special">Özel renkli (50+)</option>
-                <option value="bottled">Şişede (150+)</option>
-                <option value="boxed">Kutuda (250+)</option>
-                <option value="sponsored">Sponsorlu</option>
-                <option value="realized">Gerçekleşmiş</option>
-              </select>
-              <span className="text-xs text-neutral-400">
-                {demoFiltered.length.toLocaleString("tr-TR")} sonuç
-              </span>
-            </div>
-            <section className="overflow-x-auto rounded-2xl bg-white shadow-sm">
-              <table className="w-full min-w-[700px] border-collapse">
-                <thead className="border-b border-neutral-100">
-                  <tr>
-                    <th className={thCls}>Kod</th>
-                    <th className={thCls}>Rumuz</th>
-                    <th className={thCls}>Şans</th>
-                    <th className={thCls}>Görüntülenme</th>
-                    <th className={thCls}>Tarih</th>
-                    <th className={thCls}>Durum</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {demoFiltered
-                    .slice(dPageSafe * PER_PAGE, (dPageSafe + 1) * PER_PAGE)
-                    .map((e) => (
-                      <tr
-                        key={e.id}
-                        className="border-b border-neutral-50 last:border-0 hover:bg-neutral-50/60"
-                      >
-                        <td className={`${tdCls} whitespace-nowrap`}>
-                          <span className="flex items-center gap-1 font-mono text-xs font-bold text-sky-700">
-                            {e.code}
-                            <CopyBtn text={e.code} />
-                          </span>
-                        </td>
-                        <td className={`${tdCls} font-semibold`}>{e.name}</td>
-                        <td className={tdCls}>
-                          ⭐ {e.luck.toLocaleString("tr-TR")}
-                        </td>
-                        <td className={tdCls}>
-                          👁️ {e.views.toLocaleString("tr-TR")}
-                        </td>
-                        <td className={`${tdCls} whitespace-nowrap text-xs`}>
-                          {e.date}
-                        </td>
-                        <td className={tdCls}>
-                          <ManifestChips m={{ ...e, demo: true }} />
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </section>
-            {/* Sayfalama */}
+          {manPages > 1 && (
             <div className="flex items-center justify-center gap-3 text-sm">
               <button
                 type="button"
-                disabled={dPageSafe === 0}
-                onClick={() => setDPage(dPageSafe - 1)}
+                disabled={manPage === 0}
+                onClick={() => setManPage(manPage - 1)}
                 className="cursor-pointer rounded-full bg-white px-4 py-1.5 font-medium text-neutral-600 shadow-sm transition-colors hover:bg-neutral-50 disabled:cursor-default disabled:opacity-40"
               >
                 ← Önceki
               </button>
               <span className="text-xs text-neutral-500">
-                Sayfa {dPageSafe + 1} / {dPages}
+                Sayfa {manPage + 1} / {manPages}
               </span>
               <button
                 type="button"
-                disabled={dPageSafe >= dPages - 1}
-                onClick={() => setDPage(dPageSafe + 1)}
+                disabled={manPage >= manPages - 1}
+                onClick={() => setManPage(manPage + 1)}
                 className="cursor-pointer rounded-full bg-white px-4 py-1.5 font-medium text-neutral-600 shadow-sm transition-colors hover:bg-neutral-50 disabled:cursor-default disabled:opacity-40"
               >
                 Sonraki →
               </button>
             </div>
+          )}
           </div>
         )}
 
-        {/* ── Bildirilenler — duvardan gelen şikâyetler ── */}
+        {/* ── Bildirilenler — AI kontrolü + duvardan gelen şikâyetler ── */}
         {tab === "reports" && (
           <div className="mt-5 space-y-4">
+            {/* ── Saatlik kontrole takılanlar — AI denetimi ── */}
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-sm font-bold text-neutral-700">
+                  🕐 Saatlik Kontrole Takılanlar
+                  {modPending > 0 && (
+                    <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-600">
+                      {modPending} bekliyor
+                    </span>
+                  )}
+                </h2>
+              </div>
+              {/* Tarih+saat aralığı denetimi */}
+              <div className="mt-3 flex flex-wrap items-end gap-2 rounded-xl bg-neutral-50 px-3.5 py-3">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                    Başlangıç
+                  </span>
+                  <input
+                    type="datetime-local"
+                    value={rangeFrom}
+                    onChange={(e) => setRangeFrom(e.target.value)}
+                    className={inputCls}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                    Bitiş
+                  </span>
+                  <input
+                    type="datetime-local"
+                    value={rangeTo}
+                    onChange={(e) => setRangeTo(e.target.value)}
+                    className={inputCls}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={runRangeScanNow}
+                  disabled={modBusy}
+                  className="cursor-pointer rounded-full bg-neutral-800 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-neutral-700 disabled:cursor-default disabled:opacity-50"
+                >
+                  {modBusy
+                    ? "Denetleniyor…"
+                    : "🔍 Aralıktaki manifestleri denetle"}
+                </button>
+              </div>
+              {modErr && (
+                <p className="mt-3 rounded-xl bg-red-50 px-4 py-2.5 text-xs font-semibold leading-relaxed text-red-600">
+                  {modErr}
+                </p>
+              )}
+              {!aiKey.trim() && (
+                <p className="mt-3 rounded-xl bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-700">
+                  ⚠︎ API anahtarı tanımlı değil — &quot;⚙️ Ayarlar&quot;
+                  sekmesinden ekleyin.
+                </p>
+              )}
+              {aiKey.trim() !== "" && !aiEnabled && (
+                <p className="mt-3 rounded-xl bg-sky-50 px-4 py-2.5 text-xs leading-relaxed text-sky-700">
+                  💤 Otomatik saatlik kontrol kapalı — &quot;⚙️ Ayarlar&quot;
+                  sekmesinden açabilirsiniz.
+                </p>
+              )}
+
+              {/* İlerleme çubuğu — denetim sürerken gerçek durumla dolar */}
+              {(modBusy || modProg?.active) && (
+                <div className="mt-4">
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-neutral-100">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-amber-300 to-amber-500 transition-all duration-700 ease-out"
+                      style={{
+                        width: `${Math.round(Math.max(0.05, Math.min(modBarFrac, 0.98)) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-[11px] font-medium text-neutral-400">
+                    {modProg && modProg.totalWindows > 0 ? (
+                      <>
+                        Denetleniyor… {modProg.doneWindows}/
+                        {modProg.totalWindows} pencere tamamlandı
+                        {modProg.scanning > 0 &&
+                          ` · ${modProg.scanning} manifest AI tarafından inceleniyor`}
+                        {" · %"}
+                        {Math.round(Math.min(modBarFrac, 0.98) * 100)}
+                      </>
+                    ) : (
+                      "Denetim başlatılıyor…"
+                    )}
+                  </p>
+                </div>
+              )}
+
+              {/* Tarama geçmişinde tarihe göre arama */}
+              {modRuns.length > 0 && (
+                <div className="mt-4 flex items-center gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                    Tarihe git
+                  </span>
+                  <input
+                    type="date"
+                    value={modSearch}
+                    onChange={(e) => {
+                      setModSearch(e.target.value);
+                      setModPage(0);
+                    }}
+                    className={`${inputCls} max-w-44`}
+                  />
+                  {modSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModSearch("");
+                        setModPage(0);
+                      }}
+                      className="cursor-pointer rounded-full border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-500 transition-colors hover:bg-neutral-50"
+                    >
+                      Temizle
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {modFiltered.length === 0 ? (
+                <p className="mt-4 rounded-xl bg-neutral-50 px-4 py-3 text-center text-xs text-neutral-400">
+                  {modSearch
+                    ? "Bu tarihte tarama yok."
+                    : "Henüz kontrol yapılmadı."}
+                </p>
+              ) : (
+                <div className="mt-4 space-y-1.5">
+                  {modPageRuns.map((run) => {
+                    const pending = run.flags.filter(
+                      (f) => f.status === "pending",
+                    ).length;
+                    const open = openRun === run.id;
+                    return (
+                      <div
+                        key={run.id}
+                        className="overflow-hidden rounded-xl border border-neutral-100"
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setOpenRun(open ? null : run.id)
+                          }
+                          disabled={run.flags.length === 0 && run.status === "ok"}
+                          className={`flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-xs transition-colors ${
+                            run.flags.length > 0
+                              ? "cursor-pointer hover:bg-neutral-50"
+                              : "cursor-default"
+                          }`}
+                        >
+                          <span className="font-semibold text-neutral-600">
+                            {run.kind === "range"
+                              ? fmtRange(run.windowStart, run.windowEnd)
+                              : fmtWindow(run.windowStart, run.windowEnd)}
+                          </span>
+                          {run.kind === "range" && (
+                            <Chip tone="sky">🔍 aralık taraması</Chip>
+                          )}
+                          <span className="text-neutral-400">
+                            · {run.scanned} manifest tarandı
+                          </span>
+                          {run.status === "failed" ? (
+                            <Chip tone="red" title={run.error}>
+                              hata — yeniden denenecek
+                            </Chip>
+                          ) : run.flags.length === 0 ? (
+                            <Chip tone="emerald">temiz ✓</Chip>
+                          ) : (
+                            <Chip tone={pending > 0 ? "red" : "neutral"}>
+                              {run.flags.length} takıldı
+                              {pending > 0 ? ` · ${pending} bekliyor` : ""}
+                            </Chip>
+                          )}
+                          {run.flags.length > 0 && (
+                            <span className="ml-auto text-neutral-300">
+                              {open ? "▲" : "▼"}
+                            </span>
+                          )}
+                        </button>
+
+                        {open && run.flags.length > 0 && (
+                          <div className="space-y-3 border-t border-neutral-100 bg-neutral-50/50 p-3.5">
+                            {run.flags.map((f) => {
+                              const cat =
+                                MOD_CATEGORIES[f.category as ModCategory];
+                              return (
+                                <div
+                                  key={f.id}
+                                  className="rounded-xl bg-white p-3.5 shadow-sm"
+                                >
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span
+                                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${cat?.chip ?? "bg-neutral-100 text-neutral-600"}`}
+                                      title={cat?.desc}
+                                    >
+                                      {cat?.label ?? f.category}
+                                    </span>
+                                    {f.selfHarm && (
+                                      <Chip
+                                        tone="violet"
+                                        title="İçerikte kendine zarar iması tespit edildi — silseniz bile standart kural maili gönderilmez."
+                                      >
+                                        ⚠︎ hassas içerik
+                                      </Chip>
+                                    )}
+                                    <span className="text-[11px] text-neutral-400">
+                                      güven %{Math.round(f.confidence * 100)}
+                                    </span>
+                                    <span className="ml-auto flex items-center gap-1 font-mono text-[11px] font-bold text-sky-700">
+                                      {f.code}
+                                      <CopyBtn text={f.code} />
+                                    </span>
+                                    <span className="text-xs font-semibold text-neutral-600">
+                                      {f.name}
+                                    </span>
+                                  </div>
+                                  <p className="mt-2 text-sm leading-relaxed text-neutral-700">
+                                    {f.manifest}
+                                  </p>
+                                  <p className="mt-1.5 text-[11.5px] italic text-neutral-400">
+                                    AI gerekçesi: {f.reason}
+                                  </p>
+                                  <div className="mt-2.5 flex items-center gap-2">
+                                    {f.status === "pending" ? (
+                                      <>
+                                        <button
+                                          type="button"
+                                          disabled={flagBusy === f.id}
+                                          onClick={() =>
+                                            decideFlag(f.id, "approve")
+                                          }
+                                          className="cursor-pointer rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-default disabled:opacity-50"
+                                        >
+                                          ✓ Onayla — duvarda kalsın
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={flagBusy === f.id}
+                                          onClick={() =>
+                                            decideFlag(f.id, "delete")
+                                          }
+                                          className="cursor-pointer rounded-full border border-red-200 bg-red-50 px-3.5 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100 disabled:cursor-default disabled:opacity-50"
+                                        >
+                                          🗑 Sil{f.selfHarm ? "" : " ve bildir"}
+                                        </button>
+                                      </>
+                                    ) : f.status === "approved" ? (
+                                      <Chip tone="emerald">
+                                        onaylandı — duvarda
+                                      </Chip>
+                                    ) : (
+                                      <Chip tone="neutral">
+                                        silindi ve duvardan kaldırıldı
+                                      </Chip>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Sayfalama — 20 tarama / sayfa */}
+              {modPages > 1 && (
+                <div className="mt-4 flex items-center justify-center gap-3 text-sm">
+                  <button
+                    type="button"
+                    disabled={modPageSafe === 0}
+                    onClick={() => setModPage(modPageSafe - 1)}
+                    className="cursor-pointer rounded-full bg-white px-4 py-1.5 font-medium text-neutral-600 shadow-sm transition-colors hover:bg-neutral-50 disabled:cursor-default disabled:opacity-40"
+                  >
+                    ← Önceki
+                  </button>
+                  <span className="text-xs text-neutral-500">
+                    Sayfa {modPageSafe + 1} / {modPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={modPageSafe >= modPages - 1}
+                    onClick={() => setModPage(modPageSafe + 1)}
+                    className="cursor-pointer rounded-full bg-white px-4 py-1.5 font-medium text-neutral-600 shadow-sm transition-colors hover:bg-neutral-50 disabled:cursor-default disabled:opacity-40"
+                  >
+                    Sonraki →
+                  </button>
+                </div>
+              )}
+            </section>
+
             <p className="rounded-xl bg-red-50 px-4 py-2.5 text-xs leading-relaxed text-red-700">
               Ziyaretçilerin duvar popup&apos;larındaki &quot;Bildir&quot;
               butonuyla işaretlediği manifestler. Kaldır, yalnızca bildirimi
@@ -1160,9 +1390,130 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ── Bildirim Ayarları: SMTP + Google ile giriş ── */}
+        {/* ── Ayarlar: AI denetim anahtarı + SMTP + Google ile giriş ── */}
         {tab === "mail" && mailCfg && (
           <div className="mt-5 space-y-5">
+            {/* ── Yapay zeka denetimi: Anthropic API anahtarı ── */}
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-neutral-700">
+                🤖 Yapay Zeka Denetimi
+              </h2>
+              <p className="mt-1 text-xs text-neutral-400">
+                Anahtar:{" "}
+                <a
+                  href="https://console.anthropic.com/settings/keys"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-sky-600 hover:underline"
+                >
+                  console.anthropic.com
+                </a>
+              </p>
+              <div className="mt-4 flex flex-wrap items-end gap-3">
+                <label className="block min-w-64 flex-1">
+                  <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                    Anthropic API Anahtarı
+                  </span>
+                  <input
+                    type="password"
+                    value={aiKey}
+                    onChange={(e) => {
+                      setAiKey(e.target.value);
+                      setAiSaved(false);
+                    }}
+                    placeholder="sk-ant-api03-..."
+                    className={inputCls}
+                    autoComplete="new-password"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={saveAiKey}
+                  className="cursor-pointer rounded-full bg-neutral-800 px-5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-neutral-700"
+                >
+                  Kaydet
+                </button>
+              </div>
+              {aiSaved && (
+                <p className="mt-2 text-xs font-semibold text-emerald-600">
+                  Kaydedildi ✓ — bir sonraki kontrolde bu anahtar kullanılacak.
+                </p>
+              )}
+              <div className="mt-5 flex items-center gap-3 border-t border-neutral-100 pt-4">
+                <button
+                  type="button"
+                  onClick={toggleAiEnabled}
+                  aria-label="Saatlik otomatik kontrolü aç/kapat"
+                  className={`relative h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors ${
+                    aiEnabled ? "bg-emerald-500" : "bg-neutral-300"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${
+                      aiEnabled ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+                <div>
+                  <p className="text-xs font-bold text-neutral-700">
+                    Saatlik otomatik kontrol{" "}
+                    {aiEnabled ? (
+                      <span className="text-emerald-600">açık</span>
+                    ) : (
+                      <span className="text-neutral-400">kapalı</span>
+                    )}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-neutral-400">
+                    Kapalıyken saat başı denetim ve harcama olmaz.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            {/* ── Demo manifest yönetimi — ölçek testleri ── */}
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-neutral-700">
+                🧪 Demo Manifestler
+              </h2>
+              <div className="mt-4 flex flex-wrap items-end gap-3">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                    Adet
+                  </span>
+                  <input
+                    value={demoCount}
+                    onChange={(e) =>
+                      setDemoCount(e.target.value.replace(/\D/g, ""))
+                    }
+                    inputMode="numeric"
+                    placeholder="100000"
+                    className={`${inputCls} max-w-36`}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={generateDemos}
+                  disabled={demoBusy}
+                  className="cursor-pointer rounded-full bg-neutral-800 px-5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-neutral-700 disabled:cursor-default disabled:opacity-50"
+                >
+                  {demoBusy ? "Çalışıyor…" : "Demo Üret"}
+                </button>
+                <button
+                  type="button"
+                  onClick={deleteDemos}
+                  disabled={demoBusy}
+                  className="cursor-pointer rounded-full border border-red-200 bg-red-50 px-5 py-2 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100 disabled:cursor-default disabled:opacity-50"
+                >
+                  Demoları Sil
+                </button>
+              </div>
+              {demoMsg && (
+                <p className="mt-2 text-xs font-semibold text-neutral-500">
+                  {demoMsg}
+                </p>
+              )}
+            </section>
+
             <section className="rounded-2xl bg-white p-5 shadow-sm">
               <h2 className="text-sm font-bold text-neutral-700">
                 📮 SMTP (E-posta) Ayarları
@@ -1370,300 +1721,6 @@ export default function AdminPage() {
         )}
       </div>
 
-      {/* ── Manifest editörü — tanımla / düzenle ── */}
-      {editor && (
-        <div
-          className="fixed inset-0 z-[2100] overflow-y-auto bg-black/40 px-4 py-8"
-          onClick={() => setEditor(null)}
-        >
-          <div
-            className="mx-auto w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <h3
-                  className="text-2xl font-bold text-neutral-800"
-                  style={{ fontFamily: "var(--font-caveat)" }}
-                >
-                  {editor.code ? "Manifesti Düzenle ✏️" : "Manifest Tanımla ✍️"}
-                </h3>
-                <p className="mt-0.5 text-xs text-neutral-400">
-                  Üye:{" "}
-                  <b className="text-neutral-600">
-                    {users.find((u) => u.id === editor.userId)?.name}
-                  </b>
-                  {editor.code && (
-                    <>
-                      {" "}
-                      · Kod: <b className="text-neutral-600">{editor.code}</b>
-                    </>
-                  )}{" "}
-                  · Yıllık kota admin tanımında uygulanmaz.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditor(null)}
-                aria-label="Kapat"
-                className="cursor-pointer text-lg text-neutral-400 hover:text-neutral-600"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Hazır senaryolar */}
-            <div className="mt-4 flex flex-wrap gap-1.5">
-              {PRESETS.map((p) => (
-                <button
-                  key={p.label}
-                  type="button"
-                  onClick={() => patch(p.patch)}
-                  className="cursor-pointer rounded-full bg-neutral-100 px-3 py-1 text-[11px] font-medium text-neutral-600 transition-colors hover:bg-amber-100 hover:text-amber-700"
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-
-            {formErr && (
-              <p className="mt-3 rounded-xl bg-red-50 px-4 py-2.5 text-sm text-red-600">
-                {formErr}
-              </p>
-            )}
-
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                  Rumuz
-                </span>
-                <input
-                  value={form.name}
-                  onChange={(e) => patch({ name: e.target.value.slice(0, 20) })}
-                  placeholder="Zarfın üstündeki isim"
-                  className={inputCls}
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                  Eklenme Tarihi
-                </span>
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => patch({ date: e.target.value })}
-                  className={inputCls}
-                />
-              </label>
-            </div>
-
-            <label className="mt-4 block">
-              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                Manifest Metni ({form.text.length}/300)
-              </span>
-              <textarea
-                value={form.text}
-                onChange={(e) => patch({ text: e.target.value.slice(0, 300) })}
-                rows={3}
-                placeholder="Manifest… (en az 10 karakter)"
-                className={`${inputCls} resize-none`}
-              />
-            </label>
-
-            <div className="mt-4 grid gap-4 sm:grid-cols-3">
-              {(
-                [
-                  ["Şans ⭐", "luck"],
-                  ["Tebrik 👏", "cheers"],
-                  ["Görüntülenme 👁️", "views"],
-                ] as const
-              ).map(([label, key]) => (
-                <label key={key} className="block">
-                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                    {label}
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={form[key]}
-                    onChange={(e) =>
-                      patch({ [key]: Number(e.target.value) } as Partial<Form>)
-                    }
-                    className={inputCls}
-                  />
-                </label>
-              ))}
-            </div>
-            <p className="mt-1.5 text-[11px] text-neutral-400">
-              Barajlar: 20+ sticker · 50+ özel renk · 150+ şişe · 250+ hediye
-              kutusu. Tebrik yalnızca gerçekleşen manifestte görünür.
-            </p>
-
-            {/* Zarf rengi */}
-            <div className="mt-4">
-              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                Zarf Rengi
-              </span>
-              <div className="flex flex-wrap items-center gap-2">
-                {PANEL_COLORS.map((pc, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    aria-label={`Zarf rengi ${i + 1}`}
-                    onClick={() => patch({ colorIdx: i })}
-                    className={`h-7 w-7 cursor-pointer rounded-full transition-transform hover:scale-110 ${
-                      form.colorIdx === i
-                        ? "scale-110 ring-2 ring-neutral-700 ring-offset-1"
-                        : "ring-1 ring-black/10"
-                    }`}
-                    style={{ background: pc.base }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Sticker */}
-            <div className="mt-4">
-              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                Sticker (20+ hak)
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => patch({ sticker: "" })}
-                  className={`cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                    form.sticker === ""
-                      ? "bg-neutral-800 text-white"
-                      : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
-                  }`}
-                >
-                  Yok
-                </button>
-                {STICKERS.map((s) => (
-                  <button
-                    key={s.emoji}
-                    type="button"
-                    title={s.label}
-                    onClick={() => patch({ sticker: s.emoji })}
-                    className={`cursor-pointer rounded-lg px-2 py-1 text-lg leading-none transition-all hover:scale-110 ${
-                      form.sticker === s.emoji
-                        ? "bg-amber-100 ring-2 ring-amber-400"
-                        : "bg-neutral-50 hover:bg-neutral-100"
-                    }`}
-                  >
-                    {s.emoji}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Özel renk */}
-            <div className="mt-4">
-              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                Özel Renk (50+ hak)
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => patch({ special: -1 })}
-                  className={`cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                    form.special < 0
-                      ? "bg-neutral-800 text-white"
-                      : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
-                  }`}
-                >
-                  Yok
-                </button>
-                {SPECIAL_COLORS.map((s, i) => (
-                  <button
-                    key={s.label}
-                    type="button"
-                    onClick={() => patch({ special: i })}
-                    className={`cursor-pointer rounded-lg px-3 py-1.5 text-xs font-bold text-[#E5C15C] transition-all hover:scale-105 ${
-                      form.special === i ? "ring-2 ring-amber-400" : ""
-                    }`}
-                    style={{ background: s.color.bodyBg }}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Durum anahtarları */}
-            <div className="mt-4 flex flex-wrap gap-2">
-              {(
-                [
-                  ["🍾 Şişede (150+ hak)", "bottled"],
-                  ["🎁 Kutuda (250+ hak)", "boxed"],
-                  ["✓ Gerçekleşti", "realized"],
-                ] as const
-              ).map(([label, key]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => patch({ [key]: !form[key] } as Partial<Form>)}
-                  className={`cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
-                    form[key]
-                      ? "bg-neutral-800 text-white"
-                      : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {/* Önizleme — zarf veya kutu */}
-            <div className="mt-4 flex items-center justify-center gap-6 rounded-xl bg-[#f1efe9] py-4">
-              {form.boxed ? (
-                <div className="pr-8">
-                  <GiftBoxVisual
-                    size={120}
-                    name={form.name || "Rumuz"}
-                    luck={form.luck}
-                    sticker={form.sticker || undefined}
-                    realized={form.realized}
-                    cheers={form.cheers}
-                    glow
-                  />
-                </div>
-              ) : (
-                <MiniEnvelope
-                  color={
-                    form.special >= 0
-                      ? SPECIAL_COLORS[form.special % SPECIAL_COLORS.length]
-                          .color
-                      : PANEL_COLORS[form.colorIdx % PANEL_COLORS.length]
-                  }
-                  name={form.name || "Rumuz"}
-                  luck={form.luck}
-                  sticker={form.sticker || undefined}
-                  width={150}
-                />
-              )}
-            </div>
-
-            <div className="mt-5 flex gap-2.5">
-              <button
-                type="button"
-                onClick={() => setEditor(null)}
-                className="flex-1 cursor-pointer rounded-xl border border-neutral-200 py-2.5 text-sm font-medium text-neutral-500 transition-colors hover:bg-neutral-50"
-              >
-                Vazgeç
-              </button>
-              <button
-                type="button"
-                onClick={saveEditor}
-                className="flex-1 cursor-pointer rounded-xl bg-neutral-800 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-neutral-700"
-              >
-                {editor.code ? "Kaydet" : "Üyeye Tanımla 💌"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ── Üye silme onayı ── */}
       {confirmDelUser && (
         <div
@@ -1681,7 +1738,8 @@ export default function AdminPage() {
               <b className="text-red-500">
                 {confirmDelUser.manifests.length} manifesti
               </b>{" "}
-              kalıcı olarak silinecek.
+              kalıcı olarak silinecek. Üyeye &quot;hesabınız silinmiştir&quot;
+              e-postası gönderilecek.
               {confirmDelUser.id === "u-test" &&
                 " Test hesabı silinirse ancak veri sıfırlama ile geri gelir."}
             </p>
@@ -1722,9 +1780,27 @@ export default function AdminPage() {
               Manifesti sil?
             </h3>
             <p className="mt-2 text-sm leading-relaxed text-neutral-500">
-              <b className="text-neutral-700">{confirmDelMan.m.code}</b> kodlu
-              manifest ({confirmDelMan.u.name} üyesinin) duvardan kaldırılacak.
+              <b className="text-neutral-700">{confirmDelMan.code}</b> kodlu
+              manifest ({confirmDelMan.owner} üyesinin) duvardan kaldırılacak
+              ve sahibine bilgilendirme e-postası gönderilecek.
             </p>
+            <label className="mt-4 block">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                Kaldırma gerekçesi
+              </span>
+              <select
+                value={delReason}
+                onChange={(e) => setDelReason(e.target.value)}
+                className="w-full cursor-pointer rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
+              >
+                <option value="none">Gerekçe belirtme (yalnızca bildir)</option>
+                {(Object.keys(MOD_CATEGORIES) as ModCategory[]).map((k) => (
+                  <option key={k} value={k}>
+                    {MOD_CATEGORIES[k].label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="mt-5 flex gap-2.5">
               <button
                 type="button"
@@ -1735,12 +1811,10 @@ export default function AdminPage() {
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  delManifest(confirmDelMan.u, confirmDelMan.m.code)
-                }
+                onClick={delManifestWithReason}
                 className="flex-1 cursor-pointer rounded-xl bg-red-500 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-600"
               >
-                Evet, Sil
+                Sil ve Bildir
               </button>
             </div>
           </div>

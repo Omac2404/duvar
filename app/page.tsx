@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -11,7 +12,7 @@ import {
 } from "react";
 import SiteHeader from "./components/SiteHeader";
 import CopyBtn from "./components/CopyBtn";
-import { currentUser, PANEL_COLORS } from "./lib/auth";
+import { currentUser, PANEL_COLORS, type MemberManifest } from "./lib/auth";
 import {
   BottleVisual,
   GiftBoxVisual,
@@ -19,19 +20,20 @@ import {
   RIBBON_GRADS,
 } from "./components/RewardVisuals";
 import {
-  buildEnvelopes,
-  MEMBER_ID_BASE,
   mulberry32,
   REPORT_REASONS,
   SPECIALS,
   type Envelope,
 } from "./lib/wallData";
 import {
-  fetchManifests,
   fetchReportedCodes,
   fetchSettings,
+  fetchWallMeta,
+  fetchWallSlice,
+  findWallCode,
   react as apiReact,
   submitReport,
+  type WallMeta,
 } from "./lib/api";
 
 const MONTHS_TR = [
@@ -316,17 +318,17 @@ function BottlePopup({
           >
             ×
           </button>
+          {/* Masaüstü kapat — mektubun sağ üst köşesinin tam üstünde */}
+          <button
+            type="button"
+            onClick={close}
+            className="absolute -right-5 -top-5 z-40 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white text-xl text-neutral-600 shadow-lg transition-all hover:scale-110 max-[520px]:hidden"
+            style={{ opacity: notePhase === "open" ? 1 : 0 }}
+            aria-label="Kapat"
+          >
+            ×
+          </button>
         </div>
-
-        <button
-          type="button"
-          onClick={close}
-          className="absolute -right-14 top-[10%] z-40 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white text-xl text-neutral-600 shadow-lg transition-all hover:scale-110 max-[520px]:hidden"
-          style={{ opacity: stage === "open" ? 1 : 0 }}
-          aria-label="Kapat"
-        >
-          ×
-        </button>
       </div>
     </div>
   );
@@ -334,7 +336,9 @@ function BottlePopup({
 
 type Pos = { x: number; y: number; z: number };
 
-function EnvelopeCard({
+// memo: duvarda ~300 kart var; alakasız state değişimlerinde (popup açma,
+// vurgu, dilim gelişi) yalnızca props'u değişen kart yeniden çizilir
+const EnvelopeCard = memo(function EnvelopeCard({
   envelope,
   pos,
   envW,
@@ -525,7 +529,15 @@ function EnvelopeCard({
       </button>
     </div>
   );
-}
+},
+// onOpen her render'da yeni closure olur — karşılaştırmaya girmez
+(a, b) =>
+  a.envelope === b.envelope &&
+  a.pos === b.pos &&
+  a.envW === b.envW &&
+  a.hidden === b.hidden &&
+  a.offset === b.offset &&
+  a.highlighted === b.highlighted);
 
 
 // ── Manifest Hediye Kutusu — 250+ şans ödülü ─────────────────────────────
@@ -666,6 +678,16 @@ function GiftPopup({
               aria-label="Kapat"
               className="absolute -top-11 right-0 z-40 hidden h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white text-lg text-neutral-600 shadow-lg max-[520px]:flex"
               style={{ opacity: stage === "open" ? 1 : 0 }}
+            >
+              ×
+            </button>
+            {/* Masaüstü kapat — mektubun sağ üst köşesinin tam üstünde */}
+            <button
+              type="button"
+              onClick={close}
+              className="absolute -right-5 -top-5 z-40 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white text-xl text-neutral-600 shadow-lg transition-all hover:scale-110 max-[520px]:hidden"
+              style={{ opacity: stage === "open" ? 1 : 0 }}
+              aria-label="Kapat"
             >
               ×
             </button>
@@ -812,15 +834,6 @@ function GiftPopup({
             </>
           )}
 
-          <button
-            type="button"
-            onClick={close}
-            aria-label="Kapat"
-            className="absolute -right-2 z-40 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white text-xl text-neutral-600 shadow-lg transition-all hover:scale-110 max-[520px]:hidden"
-            style={{ top: 120 * geo.k, opacity: atCenter ? 1 : 0 }}
-          >
-            ×
-          </button>
         </div>
       </div>
     </div>
@@ -1761,69 +1774,83 @@ function ManifestPopup({
   );
 }
 
+// Kod → deterministik görsel tohum: serpme/dönüş değerleri her yüklemede
+// aynı kalır (dilimler tekrar çekilse de zarflar titremez)
+function envRng(code: string) {
+  let h = 2166136261;
+  for (let i = 0; i < code.length; i++) {
+    h ^= code.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return mulberry32((h >>> 0) % 2147483647 || 1);
+}
+
+// Sunucudan gelen duvar kaydı → Envelope (eski üye dönüşümüyle birebir)
+function itemToEnvelope(m: MemberManifest, id: number): Envelope {
+  const seed = envRng(m.code);
+  const pc = PANEL_COLORS[m.colorIdx % PANEL_COLORS.length];
+  const d = new Date(m.ts);
+  const env: Envelope = {
+    id,
+    name: m.name,
+    manifest: m.manifest,
+    jx: seed(),
+    jy: seed(),
+    zr: Math.floor(seed() * 4),
+    rotation: -28 + seed() * 56,
+    color: { base: pc.base, dark: pc.dark, ink: pc.ink },
+    luck: m.luck,
+    cheers: m.realized ? m.cheers : 0,
+    views: m.views,
+    code: m.code,
+    date: m.date,
+    year: d.getFullYear(),
+    month: d.getMonth() + 1,
+    realized: m.realized,
+    realizedDate: m.realizedDate,
+    ts: m.ts,
+  };
+  if (m.sticker)
+    env.sticker = {
+      emoji: m.sticker,
+      left: seed() < 0.5 ? 24 : 76,
+      rotation: -25 + seed() * 50,
+    };
+  if (m.special != null) {
+    env.color = SPECIALS[m.special % SPECIALS.length];
+    env.ribbon = m.special;
+  }
+  if (m.bottled) env.bottled = true;
+  if (m.boxed) env.boxed = true;
+  return env;
+}
+
+const SLICE_CHUNK = 300;
+
 export default function Home() {
-  const baseEnvelopes = useMemo(buildEnvelopes, []);
+  // ── Dilimli duvar verisi ───────────────────────────────────────────────
+  // Meta (sayılar + şişe/kutu listeleri) tek istekte gelir; zarflar
+  // görünür bölgeye göre dilim dilim çekilip rank→Envelope önbelleğinde
+  // tutulur. Duvarın tamamı hiçbir zaman belleğe alınmaz — 100 bin
+  // manifestte de açılış birkaç yüz KB'dir.
+  const [fYear, setFYear] = useState(2026);
+  const [fMonth, setFMonth] = useState(0);
+  const [meta, setMeta] = useState<WallMeta | null>(null);
+  const slicesRef = useRef<Map<number, Envelope>>(new Map());
+  const pendingRef = useRef<Set<number>>(new Set());
+  const filterKeyRef = useRef("");
+  const [sliceVer, setSliceVer] = useState(0);
 
-  // Üyelerin panelden yazdığı manifestler duvara eklenir (backend'den).
-  // Baraj kuralları duvarla aynı uygulanır: 20+ sticker, 50+ özel renk,
-  // 150+ şişe
-  const [memberEnvs, setMemberEnvs] = useState<Envelope[]>([]);
   useEffect(() => {
-    fetchManifests().then((manifests) => {
-      const list: Envelope[] = [];
-      let id = MEMBER_ID_BASE;
-      for (const m of manifests) {
-        const seed = mulberry32(m.ts % 2147483647 || 1);
-        const pc = PANEL_COLORS[m.colorIdx % PANEL_COLORS.length];
-        const d = new Date(m.ts);
-        const env: Envelope = {
-          id: id++,
-          name: m.name,
-          manifest: m.manifest,
-          jx: seed(),
-          jy: seed(),
-          zr: Math.floor(seed() * 4),
-          rotation: -28 + seed() * 56,
-          color: { base: pc.base, dark: pc.dark, ink: pc.ink },
-          luck: m.luck,
-          cheers: m.realized ? m.cheers : 0,
-          views: m.views,
-          code: m.code,
-          date: m.date,
-          year: d.getFullYear(),
-          month: d.getMonth() + 1,
-          realized: m.realized,
-          realizedDate: m.realizedDate,
-          ts: m.ts,
-        };
-        // Sticker'ı üye panelden kendisi seçer; seçmediyse zarf süssüz kalır
-        if (m.sticker)
-          env.sticker = {
-            emoji: m.sticker,
-            left: seed() < 0.5 ? 24 : 76,
-            rotation: -25 + seed() * 50,
-          };
-        // Özel rengi (50+ hak) üye panelden kendisi seçer; şişe kurdelesi
-        // de aynı renk ailesini kullanır
-        if (m.special != null) {
-          env.color = SPECIALS[m.special % SPECIALS.length];
-          env.ribbon = m.special;
-        }
-        // Şişeye koyma (150+ hak) da üyenin onayıyla olur
-        if (m.bottled) env.bottled = true;
-        // Hediye kutusu (250+ hak): kutudaki manifest zarf/şişe olarak
-        // görünmez, duvarda kurdeleli kutuda sergilenir
-        if (m.boxed) env.boxed = true;
-        list.push(env);
-      }
-      setMemberEnvs(list);
+    const key = `${fYear}-${fMonth}`;
+    filterKeyRef.current = key;
+    slicesRef.current = new Map();
+    pendingRef.current = new Set();
+    setSliceVer((v) => v + 1);
+    fetchWallMeta(fYear, fMonth).then((m) => {
+      if (filterKeyRef.current === key && m) setMeta(m);
     });
-  }, []);
-
-  const envelopes = useMemo(
-    () => [...baseEnvelopes, ...memberEnvs],
-    [baseEnvelopes, memberEnvs],
-  );
+  }, [fYear, fMonth]);
 
   // Reklam alanları — admin panelden açılıp kapatılır (backend ayarı)
   const [ads, setAds] = useState(false);
@@ -1873,46 +1900,14 @@ export default function Home() {
 
   const cols = phone ? 3 : vwPx < 700 ? 3 : vwPx < 1100 ? 6 : 10;
 
-  // Yıl / ay filtresi (0 = tümü) — yıl, mevcut tek yıl olan 2026 seçili gelir
-  const [fYear, setFYear] = useState(2026);
-  const [fMonth, setFMonth] = useState(0);
-
-  const visible = useMemo(
-    () =>
-      envelopes.filter(
-        (e) =>
-          !e.bottled &&
-          !e.boxed &&
-          (!fYear || e.year === fYear) &&
-          (!fMonth || e.month === fMonth),
-      ),
-    [envelopes, fYear, fMonth],
-  );
-
-  // Şişedeki manifestler (150+ şans) — kutuya taşınanlar şişeden çıkar,
-  // yıl/ay filtresi zarflarla aynı şekilde şişelere de uygulanır
+  // Şişe ve kutular meta ile tam liste gelir (150+/250+ şans — nadir)
   const bottledEnvs = useMemo(
-    () =>
-      envelopes.filter(
-        (e) =>
-          e.bottled &&
-          !e.boxed &&
-          (!fYear || e.year === fYear) &&
-          (!fMonth || e.month === fMonth),
-      ),
-    [envelopes, fYear, fMonth],
+    () => (meta?.bottles ?? []).map((m, i) => itemToEnvelope(m, 2000000 + i)),
+    [meta],
   );
-
-  // Hediye kutusundaki manifestler (250+ şans) — aynı filtre kuralları
   const boxedEnvs = useMemo(
-    () =>
-      envelopes.filter(
-        (e) =>
-          e.boxed &&
-          (!fYear || e.year === fYear) &&
-          (!fMonth || e.month === fMonth),
-      ),
-    [envelopes, fYear, fMonth],
+    () => (meta?.gifts ?? []).map((m, i) => itemToEnvelope(m, 3000000 + i)),
+    [meta],
   );
 
   // Günlük karıştırma tohumu: her gece 02:00'da değişir. Sıralama satılmaz;
@@ -1923,26 +1918,19 @@ export default function Home() {
   );
 
   const years = useMemo(
-    () => [...new Set(envelopes.map((e) => e.year))].sort(),
-    [envelopes],
+    () => (meta?.years?.length ? meta.years : [2026]),
+    [meta],
   );
 
-  // Aktif filtreye uyan manifest sayısı (şişeler dahil)
-  const filteredCount = useMemo(
-    () =>
-      envelopes.filter(
-        (e) =>
-          (!fYear || e.year === fYear) && (!fMonth || e.month === fMonth),
-      ).length,
-    [envelopes, fYear, fMonth],
-  );
+  // Aktif filtreye uyan manifest sayısı (şişe ve kutular dahil)
+  const filteredCount = meta?.total ?? 0;
 
   // Yerleşim: tamamen orantılı piksel konumları (zoom yok, ölçek yok).
   // Konum sırası her gün 02:00'da daySeed ile rastgele karılır;
   // filtre aktifken görünür zarflar baştan itibaren yeniden dizilir
   const layout = useMemo(() => {
     const m = makeLayoutMetrics(vwPx, cols);
-    const rows = Math.max(1, Math.ceil(visible.length / cols));
+    const rows = Math.max(1, Math.ceil((meta?.plain ?? 0) / cols));
     const wrapperW = cols * m.colStep;
 
     // Reklam banner alanları — tam genişlik. Masaüstünde yan yana iki
@@ -1972,54 +1960,11 @@ export default function Home() {
       : 8;
     const sectionH = topOffset + rows * m.rowStep + m.envH + 40;
 
-    // Günlük Fisher-Yates karıştırması — yalnızca duvarın kendi zarfları.
-    // Üye zarfları karışıma girmez: yeni manifest eklendiğinde duvar
-    // baştan karılmaz, aşağıda kendi sabit slotlarına sokulurlar
-    const shuffleRand = mulberry32(daySeed);
-    const memberOrder = visible.filter((e) => e.id >= MEMBER_ID_BASE);
-    let order = visible.filter((e) => e.id < MEMBER_ID_BASE);
-    for (let i = order.length - 1; i > 0; i--) {
-      const j = Math.floor(shuffleRand() * (i + 1));
-      [order[i], order[j]] = [order[j], order[i]];
-    }
+    // Sıralama artık sunucuda (md5(tohum+kod)) — burada yalnızca şişe ve
+    // kutuların konumları hesaplanır; zarf konumları render aşamasında
+    // rank'ten formülle türetilir
 
-    // Sponsor zarfları eşit yayılır: her ~100 zarflık blokta en fazla 1
-    const sponsors = order.filter((e) => e.sponsored);
-    if (sponsors.length) {
-      const rest = order.filter((e) => !e.sponsored);
-      const block = Math.max(1, Math.floor(rest.length / sponsors.length));
-      sponsors.forEach((s, i) => {
-        const at = Math.min(
-          rest.length,
-          i * block + Math.floor(shuffleRand() * block),
-        );
-        rest.splice(at, 0, s);
-      });
-      order = rest;
-    }
-
-    // Üye zarfı, koduna bağlı sabit rastgele slota sokulur: o noktada yer
-    // açılır, yalnızca sonrasındakiler bir hücre kayar — duvar karılmaz
-    for (const m of memberOrder) {
-      const slotRand = mulberry32(m.ts % 2147483647 || 1);
-      const at = Math.floor(slotRand() * (order.length + 1));
-      order.splice(at, 0, m);
-    }
-
-    const pos = new Map<number, Pos>();
-    order.forEach((env, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      pos.set(env.id, {
-        // Serpme payı iki yöne dağılır ki sol kenar da sağ gibi dolu görünsün
-        x: 2 + col * m.colStep + (env.jx - 0.5) * m.jx,
-        y: topOffset + row * m.rowStep + env.jy * m.jy,
-        // Sponsor zarfı komşularının önünde durur (etiketi kapanmasın)
-        z: (rows - row) * 4 + env.zr + (env.sponsored ? 6 : 0),
-      });
-    });
-
-    // Şişe konumları da her gün rastgele dağılır (dikeyde bantlara yayılı,
+    // Şişe konumları her gün rastgele dağılır (dikeyde bantlara yayılı,
     // banner bölgesinin altından başlarlar)
     const bRand = mulberry32(daySeed + 999);
     const bottles = bottledEnvs.map((env, i) => ({
@@ -2069,61 +2014,19 @@ export default function Home() {
       }
     }
 
-    const rx = m.bottleW / 2 + m.envW / 2 + 8;
-    const ry = m.bottleH / 2 + m.envH / 2 + 12;
-    // Kutu çevresinde zarflara nefes payı: elips içine düşen zarf dışarı itilir
-    const grx = giftW / 2 + m.envW / 2 + 18;
-    const gry = giftH / 2 + m.envH / 2 + 18;
-    for (const p of pos.values()) {
-      const ex = p.x + m.envW / 2;
-      const ey = p.y + m.envH / 2;
-      for (const bb of bottles) {
-        const bx = bb.x + m.bottleW / 2;
-        const by = bb.y + m.bottleH / 2;
-        let dx = ex - bx;
-        let dy = ey - by;
-        const d = Math.hypot(dx / rx, dy / ry);
-        if (d >= 1) continue;
-        const len = Math.hypot(dx, dy) || 1;
-        dx /= len;
-        dy /= len;
-        const push = (1 - d) * m.envW * 0.38; // hafif itme
-        p.x += dx * push;
-        p.y += dy * push;
-      }
-      for (const g of gifts) {
-        const gcx = g.x + giftW / 2;
-        const gcy = g.y + giftH / 2;
-        let dx = ex - gcx;
-        let dy = ey - gcy;
-        const d = Math.hypot(dx / grx, dy / gry);
-        if (d >= 1) continue;
-        const len = Math.hypot(dx, dy) || 1;
-        dx /= len;
-        dy /= len;
-        const push = (1 - d) * m.envW * 0.34; // kutu az ezsin, biraz rahatla
-        p.x += dx * push;
-        p.y += dy * push;
-      }
-      // Kenarlarda simetrik hafif taşmaya izin ver (iki taraf da dolu dursun)
-      p.x = Math.min(wrapperW - m.envW + 8, Math.max(-8, p.x));
-      p.y = Math.max(2, p.y);
-    }
-
     return {
       ...m,
       rows,
       wrapperW,
       sectionH,
       topOffset,
-      pos,
       bottles,
       gifts,
       giftW,
+      giftH,
       banners,
-      order,
     };
-  }, [visible, bottledEnvs, boxedEnvs, cols, vwPx, daySeed, ads]);
+  }, [meta, bottledEnvs, boxedEnvs, cols, vwPx, daySeed, ads]);
 
   // Pencereleme: sadece görünür bölge ± tampon kadar satır render edilir,
   // 1000 zarfın tamamı asla aynı anda DOM'da durmaz
@@ -2162,6 +2065,128 @@ export default function Home() {
     };
   }, [layout.rows, layout.rowStep, layout.topOffset]);
 
+  // ── Veri pencereleme: görünür bölgenin dilimleri sunucudan çekilir ─────
+  useEffect(() => {
+    if (!meta || meta.plain === 0) return;
+    const key = filterKeyRef.current;
+    // Veri, görünür alandan ~12 satır öteye kadar önden çekilir ki hızlı
+    // kaydırmada zarflar geç kalmasın
+    const startRank = Math.max(0, (range.start - 12) * cols);
+    const endRank = Math.min(meta.plain, (range.end + 13) * cols);
+    const c0 = Math.floor(startRank / SLICE_CHUNK);
+    const c1 = Math.floor(Math.max(startRank, endRank - 1) / SLICE_CHUNK);
+    for (let c = c0; c <= c1; c++) {
+      const from = c * SLICE_CHUNK;
+      if (from >= meta.plain) break;
+      if (pendingRef.current.has(c) || slicesRef.current.has(from)) continue;
+      pendingRef.current.add(c);
+      void fetchWallSlice(
+        fYear,
+        fMonth,
+        from,
+        Math.min(meta.plain, from + SLICE_CHUNK),
+      ).then((res) => {
+        pendingRef.current.delete(c);
+        // Filtre bu arada değiştiyse gelen dilim çöpe gider
+        if (!res || filterKeyRef.current !== key) return;
+        res.items.forEach((it, i) =>
+          slicesRef.current.set(res.from + i, itemToEnvelope(it, res.from + i)),
+        );
+        setSliceVer((v) => v + 1);
+      });
+    }
+  }, [meta, range, cols, fYear, fMonth]);
+
+  // Şişe/kutu da pencerelenir: 100 binlik duvarda yüzlercesi olur; yalnızca
+  // görünür bölgeye yakın olanlar DOM'a girer (ekran + tampon)
+  const winY0 = layout.topOffset + range.start * layout.rowStep - 1200;
+  const winY1 = layout.topOffset + (range.end + 1) * layout.rowStep + 1200;
+  const visibleBottles = useMemo(
+    () =>
+      layout.bottles.filter(
+        (b) => b.y + layout.bottleH >= winY0 && b.y <= winY1,
+      ),
+    [layout, winY0, winY1],
+  );
+  const visibleGifts = useMemo(
+    () =>
+      layout.gifts.filter((g) => g.y + layout.giftH >= winY0 && g.y <= winY1),
+    [layout, winY0, winY1],
+  );
+
+  // Görünür dilimdeki zarflar + konumları. Konum formülü eski yerleşimle
+  // birebir; şişe/kutu çevresindeki itmeler yalnızca render edilen ~50
+  // zarf için hesaplanır
+  const renderedEnvs = useMemo(() => {
+    void sliceVer; // dilim geldikçe yeniden hesapla
+    const out: { env: Envelope; pos: Pos }[] = [];
+    if (!meta) return out;
+    const m = layout;
+    const startRank = range.start * cols;
+    const endRank = Math.min(meta.plain, (range.end + 1) * cols);
+    const rx = m.bottleW / 2 + m.envW / 2 + 8;
+    const ry = m.bottleH / 2 + m.envH / 2 + 12;
+    const grx = m.giftW / 2 + m.envW / 2 + 18;
+    const gry = m.giftH / 2 + m.envH / 2 + 18;
+    for (let rank = startRank; rank < endRank; rank++) {
+      const env = slicesRef.current.get(rank);
+      if (!env) continue;
+      const col = rank % cols;
+      const row = Math.floor(rank / cols);
+      const p: Pos = {
+        // Serpme payı iki yöne dağılır ki sol kenar da sağ gibi dolu görünsün
+        x: 2 + col * m.colStep + (env.jx - 0.5) * m.jx,
+        y: m.topOffset + row * m.rowStep + env.jy * m.jy,
+        // z pencereye göre hesaplanır ki 10 binlerce satırda bile küçük
+        // kalsın (header z:1500 ve vurgu z:1460'ın hep altında)
+        z: (range.end + 2 - row) * 4 + env.zr,
+      };
+      const ex = p.x + m.envW / 2;
+      const ey = p.y + m.envH / 2;
+      for (const bb of visibleBottles) {
+        const bx = bb.x + m.bottleW / 2;
+        const by = bb.y + m.bottleH / 2;
+        let dx = ex - bx;
+        let dy = ey - by;
+        const d = Math.hypot(dx / rx, dy / ry);
+        if (d >= 1) continue;
+        const len = Math.hypot(dx, dy) || 1;
+        dx /= len;
+        dy /= len;
+        const push = (1 - d) * m.envW * 0.38; // hafif itme
+        p.x += dx * push;
+        p.y += dy * push;
+      }
+      for (const g of visibleGifts) {
+        const gcx = g.x + m.giftW / 2;
+        const gcy = g.y + m.giftH / 2;
+        let dx = ex - gcx;
+        let dy = ey - gcy;
+        const d = Math.hypot(dx / grx, dy / gry);
+        if (d >= 1) continue;
+        const len = Math.hypot(dx, dy) || 1;
+        dx /= len;
+        dy /= len;
+        const push = (1 - d) * m.envW * 0.34; // kutu az ezsin
+        p.x += dx * push;
+        p.y += dy * push;
+      }
+      // Kenarlarda simetrik hafif taşmaya izin ver
+      p.x = Math.min(m.wrapperW - m.envW + 8, Math.max(-8, p.x));
+      p.y = Math.max(2, p.y);
+      out.push({ env, pos: p });
+    }
+    return out;
+  }, [meta, layout, range, cols, sliceVer, visibleBottles, visibleGifts]);
+
+  // Derin atlayışta (scrollbar'la 50 bin sıra ileri gibi) görünür dilim
+  // henüz sunucudan gelmediyse kısa süreli yükleme örtüsü gösterilir
+  const visStart = range.start * cols;
+  const visEnd = Math.min(meta?.plain ?? 0, (range.end + 1) * cols);
+  const wallLoading =
+    !meta ||
+    (visEnd > visStart && renderedEnvs.length < (visEnd - visStart) * 0.4);
+
   // Kod ile manifest arama
   const [query, setQuery] = useState("");
   const [searchErr, setSearchErr] = useState(false);
@@ -2175,74 +2200,58 @@ export default function Home() {
     highlightTimer.current = setTimeout(() => setHighlightId(null), 4000);
   };
 
-  // Kodu bul, konumuna kaydır ve parlat — arama formu ve panelden
-  // "Duvara As" yönlendirmesi (?kod=) ortak kullanır
+  // Uzak hedeflere animasyonsuz zıpla (600 bin piksellik smooth scroll
+  // yerine) — yakın hedeflerde yumuşak kaydırma korunur
+  const scrollJump = (top: number) => {
+    const far = Math.abs(window.scrollY - top) > window.innerHeight * 6;
+    window.scrollTo({ top, behavior: far ? "auto" : "smooth" });
+  };
+
+  const searchFail = () => {
+    setSearchErr(true);
+    setTimeout(() => setSearchErr(false), 1200);
+  };
+
+  // Kodu SUNUCUDA bul, konumuna kaydır ve parlat — 100 binlik duvarda da
+  // tek indeksli sorgudur. Arama formu ve "?kod=" yönlendirmesi ortak
   const jumpToCode = (raw: string) => {
     const q = raw.trim().toUpperCase().replace(/[\s-]/g, "");
     if (!q) return;
-    // Tam kod ("48213KT") veya yalnızca 5 rakamlı kısmı kabul edilir
-    const num = /^\d{1,5}$/.test(q) ? q : null;
-    const env = envelopes.find(
-      (en) =>
-        en.code === q || (num && en.code.slice(0, 5) === num.padStart(5, "0")),
-    );
-    if (!env) {
-      setSearchErr(true);
-      setTimeout(() => setSearchErr(false), 1200);
-      return;
-    }
-    // Kutudaki manifest arandıysa kutunun konumuna kaydır ve parlat
-    if (env.boxed) {
-      const ge = layout.gifts.find((g) => g.env.id === env.id);
+    void findWallCode(q, fYear, fMonth).then((res) => {
+      if (!res || !res.found || !res.inFilter || !res.item)
+        return searchFail();
       const sec = sectionRef.current;
-      if (ge && sec) {
-        window.scrollTo({
-          top: sec.offsetTop + ge.y - window.innerHeight / 2 + 120,
-          behavior: "smooth",
-        });
-        flashItem(env.id);
-      } else {
-        // Kutu aktif yıl/ay filtresinin dışında
-        setSearchErr(true);
-        setTimeout(() => setSearchErr(false), 1200);
+      // Kutu/şişe: meta ile tam liste zaten yüklü — konumuna kaydır
+      if (res.kind === "boxed") {
+        const ge = layout.gifts.find((g) => g.env.code === res.item!.code);
+        if (ge && sec) {
+          scrollJump(sec.offsetTop + ge.y - window.innerHeight / 2 + 120);
+          flashItem(ge.env.id);
+        } else searchFail();
+        return;
       }
-      return;
-    }
-    // Şişedeki manifest arandıysa şişenin konumuna kaydır ve parlat
-    if (env.bottled) {
-      const be = layout.bottles.find((b) => b.env.id === env.id);
-      const sec = sectionRef.current;
-      if (be && sec) {
-        window.scrollTo({
-          top: sec.offsetTop + be.y - window.innerHeight / 2 + 120,
-          behavior: "smooth",
-        });
-        flashItem(env.id);
-      } else {
-        // Şişe aktif yıl/ay filtresinin dışında
-        setSearchErr(true);
-        setTimeout(() => setSearchErr(false), 1200);
+      if (res.kind === "bottled") {
+        const be = layout.bottles.find((b) => b.env.code === res.item!.code);
+        if (be && sec) {
+          scrollJump(sec.offsetTop + be.y - window.innerHeight / 2 + 120);
+          flashItem(be.env.id);
+        } else searchFail();
+        return;
       }
-      return;
-    }
-    const p = layout.pos.get(env.id);
-    if (!p) {
-      // Zarf aktif yıl/ay filtresinin dışında
-      setSearchErr(true);
-      setTimeout(() => setSearchErr(false), 1200);
-      return;
-    }
-    flashItem(env.id);
-    // Hedef zarf henüz render edilmemiş olabilir (pencereleme) — konumu
-    // matematiksel hesapla; kaydırınca görünür alana girip parlar
-    const sec = sectionRef.current;
-    if (sec) {
-      const topPx = sec.offsetTop + p.y;
-      window.scrollTo({
-        top: topPx - window.innerHeight / 2 + 60,
-        behavior: "smooth",
-      });
-    }
+      // Zarf: rank → satır → piksel; dilim kaydırınca yüklenip parlar
+      if (res.rank == null || res.rank < 0) return searchFail();
+      flashItem(res.rank);
+      if (sec) {
+        const row = Math.floor(res.rank / cols);
+        scrollJump(
+          sec.offsetTop +
+            layout.topOffset +
+            row * layout.rowStep -
+            window.innerHeight / 2 +
+            60,
+        );
+      }
+    });
   };
 
   const handleSearch = (e: React.FormEvent) => {
@@ -2260,25 +2269,25 @@ export default function Home() {
       jumpedRef.current = true;
       return;
     }
-    if (!memberEnvs.length) return;
+    if (!meta) return;
     jumpedRef.current = true;
     setQuery(kod.toUpperCase());
-    // Yerleşim hesaplanıp zarf duvara oturduktan sonra kaydır
+    // Yerleşim hesaplanıp duvar oturduktan sonra kaydır
     const t = setTimeout(() => jumpToCode(kod), 400);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [memberEnvs]);
+  }, [meta]);
 
   // İnen zarfla temas hâlindeki komşuları bul ve itme vektörlerini hesapla
+  // (yalnızca render edilen zarflar arasında — komşular zaten oradadır)
   const displaced = useMemo(() => {
     const map = new Map<number, { x: number; y: number }>();
     if (partingId === null) return map;
-    const target = layout.pos.get(partingId);
+    const target = renderedEnvs.find((r) => r.env.id === partingId)?.pos;
     if (!target) return map;
     const pad = 10;
-    for (const e of visible) {
+    for (const { env: e, pos: p } of renderedEnvs) {
       if (e.id === partingId) continue;
-      const p = layout.pos.get(e.id)!;
       const touches =
         p.x < target.x + layout.envW + pad &&
         target.x < p.x + layout.envW + pad &&
@@ -2294,7 +2303,7 @@ export default function Home() {
       map.set(e.id, { x: dx * push, y: dy * push });
     }
     return map;
-  }, [partingId, visible, layout]);
+  }, [partingId, renderedEnvs, layout]);
 
   // Popup açıkken sayfa kaymasın; kaybolan scrollbar kadar padding ekle ki
   // duvar yana kaymasın (yoksa zarf yerine dönerken hedef şaşar)
@@ -2408,15 +2417,14 @@ export default function Home() {
         >
           {/* Hediye Kutuları — 250+ şans dilenmiş manifestler, şişeler gibi
               duvara serpilmiş kurdeleli kutularda sergilenir */}
-          {layout.gifts.map((g) => (
+          {visibleGifts.map((g) => (
             <div
               key={g.env.id}
               className="absolute"
               style={{
                 left: g.x,
                 top: g.y,
-                zIndex:
-                  highlightId === g.env.id ? 1460 : layout.rows * 4 + 40,
+                zIndex: highlightId === g.env.id ? 1460 : 940,
                 visibility:
                   giftOpen?.id === g.env.id ? "hidden" : "visible",
               }}
@@ -2470,7 +2478,7 @@ export default function Home() {
                 top: bn.y,
                 width: bn.w,
                 height: bn.h,
-                zIndex: layout.rows * 4 + 30,
+                zIndex: 920,
               }}
             >
               <span className="text-center text-xs font-medium uppercase tracking-[0.25em] text-neutral-400">
@@ -2480,7 +2488,7 @@ export default function Home() {
           ))}
 
           {/* Şişedeki Notlar — 150+ şans dilenmiş manifestler */}
-          {layout.bottles.map((b, i) => (
+          {visibleBottles.map((b, i) => (
             <button
               key={b.env.id}
               type="button"
@@ -2503,7 +2511,7 @@ export default function Home() {
                 highlightId === b.env.id ? "item-flash" : ""
               }`}
               style={{
-                zIndex: highlightId === b.env.id ? 1460 : layout.rows * 4 + 40,
+                zIndex: highlightId === b.env.id ? 1460 : 940,
                 width: layout.bottleW,
                 left: b.x,
                 top: b.y,
@@ -2566,28 +2574,41 @@ export default function Home() {
             </button>
           ))}
 
-          {layout.order
-            .filter((_, i) => {
-              const row = Math.floor(i / cols);
-              return row >= range.start && row <= range.end;
-            })
-            .map((env) => (
-              <EnvelopeCard
-                key={env.id}
-                envelope={env}
-                pos={layout.pos.get(env.id)!}
-                envW={layout.envW}
-                hidden={selected?.env.id === env.id}
-                offset={displaced.get(env.id)}
-                highlighted={highlightId === env.id}
-                onOpen={(e, origin) => {
-                  e.views += registerView(e.code);
-                  setSelected({ env: e, origin });
-                }}
-              />
-            ))}
+          {renderedEnvs.map(({ env, pos }) => (
+            <EnvelopeCard
+              key={env.code}
+              envelope={env}
+              pos={pos}
+              envW={layout.envW}
+              hidden={selected?.env.id === env.id}
+              offset={displaced.get(env.id)}
+              highlighted={highlightId === env.id}
+              onOpen={(e, origin) => {
+                e.views += registerView(e.code);
+                setSelected({ env: e, origin });
+              }}
+            />
+          ))}
         </div>
       </section>
+
+      {/* Yükleme örtüsü — dilim beklerken logo + dönen halka */}
+      <div
+        aria-hidden={!wallLoading}
+        className={`pointer-events-none fixed inset-0 z-[1400] flex flex-col items-center justify-center gap-4 bg-[#f1efe9]/70 backdrop-blur-[2px] transition-opacity duration-300 ${
+          wallLoading ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/logo.png"
+          alt="Manifest Duvarı"
+          className="h-14 w-auto drop-shadow-sm"
+          draggable={false}
+        />
+        <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-neutral-300 border-t-amber-500" />
+        <p className="text-sm font-semibold text-neutral-500">Yükleniyor…</p>
+      </div>
 
       {bottleOpen &&
         (() => {

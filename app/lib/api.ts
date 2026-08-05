@@ -5,6 +5,7 @@
 import type { MemberManifest, User } from "./auth";
 import type { Report, ReportReason } from "./wallData";
 import type { MailConfig } from "./mail";
+import type { ModProgress, ModRun } from "./moderation";
 
 async function json<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
@@ -41,6 +42,65 @@ export function react(
     type,
     delta,
   }).catch(() => {});
+}
+
+// ── Dilimli duvar ────────────────────────────────────────────────────────
+// Duvar verisi artık topluca inmez: meta (sayılar + şişe/kutu listeleri),
+// görünür bölge dilimleri ve sunucu taraflı kod arama.
+
+export type WallMeta = {
+  seed: string;
+  plain: number;
+  total: number;
+  years: number[];
+  bottles: MemberManifest[];
+  gifts: MemberManifest[];
+};
+
+export async function fetchWallMeta(y: number, mo: number): Promise<WallMeta | null> {
+  try {
+    const res = await fetch(`/api/wall/meta?y=${y}&mo=${mo}`);
+    return res.ok ? await json<WallMeta>(res) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchWallSlice(
+  y: number,
+  mo: number,
+  from: number,
+  to: number,
+): Promise<{ from: number; items: MemberManifest[] } | null> {
+  try {
+    const res = await fetch(`/api/wall/slice?y=${y}&mo=${mo}&from=${from}&to=${to}`);
+    return res.ok ? await json<{ from: number; items: MemberManifest[] }>(res) : null;
+  } catch {
+    return null;
+  }
+}
+
+export type WallFind = {
+  found: boolean;
+  kind?: "plain" | "bottled" | "boxed";
+  inFilter?: boolean;
+  rank?: number;
+  item?: MemberManifest;
+};
+
+export async function findWallCode(
+  code: string,
+  y: number,
+  mo: number,
+): Promise<WallFind | null> {
+  try {
+    const res = await fetch(
+      `/api/wall/find?code=${encodeURIComponent(code)}&y=${y}&mo=${mo}`,
+    );
+    return res.ok ? await json<WallFind>(res) : null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Herkese açık ayarlar ─────────────────────────────────────────────────
@@ -103,10 +163,74 @@ export async function adminUsers(): Promise<User[]> {
 }
 
 export function adminSaveUser(u: User) {
+  // Manifestler artık bu uçtan yazılmaz — yalnızca isim/doğrulama
   return post<{ ok: boolean; error?: string }>(
     `/api/admin/users/${encodeURIComponent(u.id)}`,
-    { name: u.name, verified: u.verified, manifests: u.manifests },
+    { name: u.name, verified: u.verified },
     "PUT",
+  );
+}
+
+// ── Admin: sayfalı manifest listesi ─────────────────────────────────────
+
+export type AdminManifestItem = MemberManifest & {
+  owner: string;
+  ownerId: string;
+  demo: boolean;
+};
+
+export type AdminManifestList = {
+  items: AdminManifestItem[];
+  filtered: number;
+  perPage: number;
+  counts: {
+    total: number;
+    sticker: number;
+    special: number;
+    bottled: number;
+    boxed: number;
+    realized: number;
+    demo: number;
+    totalLuck: number;
+  };
+};
+
+export async function adminManifests(p: {
+  q?: string;
+  filter?: string;
+  sort?: string;
+  page?: number;
+}): Promise<AdminManifestList | null> {
+  const qs = new URLSearchParams({
+    q: p.q ?? "",
+    filter: p.filter ?? "all",
+    sort: p.sort ?? "new",
+    page: String(p.page ?? 0),
+  });
+  const res = await fetch(`/api/admin/manifests?${qs}`);
+  return res.ok ? await json<AdminManifestList>(res) : null;
+}
+
+export function adminAddLuck(code: string, addLuck: number) {
+  return post<{ ok: boolean; luck?: number }>(
+    `/api/admin/manifests/${encodeURIComponent(code)}`,
+    { addLuck },
+    "PUT",
+  );
+}
+
+export function adminGenerateDemo(count: number) {
+  return post<{ ok: boolean; inserted?: number; totalDemo?: number; error?: string }>(
+    "/api/admin/demo",
+    { count },
+  );
+}
+
+export function adminDeleteDemos() {
+  return post<{ ok: boolean; deleted?: number }>(
+    "/api/admin/demo",
+    undefined,
+    "DELETE",
   );
 }
 
@@ -115,6 +239,15 @@ export function adminDeleteUser(id: string) {
     `/api/admin/users/${encodeURIComponent(id)}`,
     undefined,
     "DELETE",
+  );
+}
+
+// Manifesti gerekçeli siler; sahibine bilgilendirme maili gider
+// (category null → gerekçesiz "kaldırıldı" bildirimi)
+export function adminDeleteManifest(code: string, category: string | null) {
+  return post<{ ok: boolean; mailSent: boolean; error?: string }>(
+    `/api/admin/manifests/${encodeURIComponent(code)}`,
+    { category },
   );
 }
 
@@ -132,10 +265,46 @@ export function adminRemoveReport(code: string, ts: number) {
   );
 }
 
+// ── Saatlik AI kontrolü ──────────────────────────────────────────────────
+
+export async function adminModeration(): Promise<ModRun[]> {
+  const res = await fetch("/api/admin/moderation");
+  if (!res.ok) return [];
+  return (await json<{ runs: ModRun[] }>(res)).runs;
+}
+
+// Gövdesiz: vadesi gelen pencereler + içinde bulunulan saat taranır.
+// Aralık verilirse (ms): o aralıktaki tüm manifestler taranır.
+export function adminModerationRun(range?: { from: number; to: number }) {
+  return post<{ ok: boolean; error?: string }>("/api/admin/moderation", range);
+}
+
+export async function adminModerationProgress(): Promise<ModProgress | null> {
+  try {
+    const res = await fetch("/api/admin/moderation/progress");
+    if (!res.ok) return null;
+    return await json<ModProgress>(res);
+  } catch {
+    return null;
+  }
+}
+
+export function adminModerationDecide(
+  id: number,
+  action: "approve" | "delete",
+) {
+  return post<{ ok: boolean; mailSent: boolean; error?: string }>(
+    `/api/admin/moderation/${id}`,
+    { action },
+  );
+}
+
 export type AdminSettings = {
   mail: MailConfig;
   ads: boolean;
   testMode: boolean;
+  aiKey: string;
+  aiEnabled: boolean;
 };
 
 export async function adminSettings(): Promise<AdminSettings | null> {
@@ -148,6 +317,8 @@ export function adminSaveSettings(patch: {
   mail?: MailConfig;
   ads?: boolean;
   testMode?: boolean;
+  aiKey?: string;
+  aiEnabled?: boolean;
 }) {
   return post<{ ok: boolean }>("/api/admin/settings", patch, "PUT");
 }

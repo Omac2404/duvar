@@ -1,27 +1,24 @@
 // ── Admin: üye listesi — manifestleriyle birlikte ────────────────────────
 
-import {
-  getDb,
-  toClientUser,
-  type ManifestRow,
-} from "../../../lib/server/db";
+import { getDb, toClientUser } from "../../../lib/server/db";
 import { isAdmin } from "../../../lib/server/session";
 import { bad } from "../../../lib/server/validate";
 
 export async function GET() {
   if (!(await isAdmin())) return bad("Yetki yok.", 401);
   const db = await getDb();
+  // Manifestler artık gömülmez (100 bin+ kayıtta liste taşar) — yalnızca
+  // adet döner; manifest listesi sayfalı /api/admin/manifests ucundadır
   const users = await db.query(
-    "SELECT id, name, email, provider, verified, created_label FROM users ORDER BY created_at",
+    `SELECT u.id, u.name, u.email, u.provider, u.verified, u.created_label,
+            u.created_at, COUNT(m.code)::int AS manifest_count
+     FROM users u LEFT JOIN manifests m ON m.user_id = u.id
+     GROUP BY u.id ORDER BY u.created_at`,
   );
-  const manifests = await db.query("SELECT * FROM manifests ORDER BY ts DESC");
-  const byUser = new Map<string, ManifestRow[]>();
-  for (const m of manifests.rows as ManifestRow[]) {
-    const list = byUser.get(m.user_id) ?? [];
-    list.push(m);
-    byUser.set(m.user_id, list);
-  }
   return Response.json({
-    users: users.rows.map((u) => toClientUser(u, byUser.get(u.id) ?? [])),
+    users: users.rows.map((u) => ({
+      ...toClientUser(u, []),
+      manifestCount: u.manifest_count as number,
+    })),
   });
 }

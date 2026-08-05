@@ -57,6 +57,26 @@ CREATE TABLE IF NOT EXISTS manifests (
   realized_label TEXT
 );
 CREATE INDEX IF NOT EXISTS manifests_user ON manifests (user_id);
+-- Ölçekleme: demo bayrağı + yıl/ay kolonları (duvar filtre/dilim sorguları)
+ALTER TABLE manifests ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE manifests ADD COLUMN IF NOT EXISTS y INT NOT NULL DEFAULT 0;
+ALTER TABLE manifests ADD COLUMN IF NOT EXISTS mo INT NOT NULL DEFAULT 0;
+UPDATE manifests SET
+  y = EXTRACT(YEAR FROM to_timestamp(ts / 1000.0) AT TIME ZONE 'Europe/Istanbul'),
+  mo = EXTRACT(MONTH FROM to_timestamp(ts / 1000.0) AT TIME ZONE 'Europe/Istanbul')
+  WHERE y = 0;
+CREATE INDEX IF NOT EXISTS manifests_wall ON manifests (y, mo, bottled, boxed);
+CREATE INDEX IF NOT EXISTS manifests_ts ON manifests (ts);
+-- y/mo her ekleme/ts değişiminde tetikleyiciyle dolar
+CREATE OR REPLACE FUNCTION mw_set_ym() RETURNS trigger AS $$
+BEGIN
+  NEW.y := EXTRACT(YEAR FROM to_timestamp(NEW.ts / 1000.0) AT TIME ZONE 'Europe/Istanbul');
+  NEW.mo := EXTRACT(MONTH FROM to_timestamp(NEW.ts / 1000.0) AT TIME ZONE 'Europe/Istanbul');
+  RETURN NEW;
+END $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS mw_manifests_ym ON manifests;
+CREATE TRIGGER mw_manifests_ym BEFORE INSERT OR UPDATE OF ts ON manifests
+  FOR EACH ROW EXECUTE FUNCTION mw_set_ym();
 
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
@@ -94,7 +114,25 @@ CREATE TABLE IF NOT EXISTS settings (
   value JSONB NOT NULL
 );
 
--- Saatlik yapay zeka denetimi için hazır tablo (akış sonra bağlanacak)
+-- Saatlik yapay zeka denetimi: her koşu bir zaman penceresini tarar
+CREATE TABLE IF NOT EXISTS moderation_runs (
+  id SERIAL PRIMARY KEY,
+  window_start BIGINT NOT NULL,
+  window_end BIGINT NOT NULL,
+  scanned INT NOT NULL DEFAULT 0,
+  flagged INT NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'ok',
+  error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- kind: 'auto' (saatlik akış) | 'range' (admin'in tarih aralığı taraması).
+-- Saatlik akışın kaldığı-yer filigranı yalnızca auto koşulara bakar; bu
+-- yüzden pencere tekilliği de yalnızca auto koşullarda aranır.
+ALTER TABLE moderation_runs ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'auto';
+DROP INDEX IF EXISTS moderation_runs_window;
+CREATE UNIQUE INDEX IF NOT EXISTS moderation_runs_window_auto
+  ON moderation_runs (window_start) WHERE kind = 'auto';
+
 CREATE TABLE IF NOT EXISTS moderation_flags (
   id SERIAL PRIMARY KEY,
   code TEXT NOT NULL,
@@ -105,6 +143,15 @@ CREATE TABLE IF NOT EXISTS moderation_flags (
   status TEXT NOT NULL DEFAULT 'pending',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Sonradan eklenen kolonlar (tablo eski kurulumlarda kolonsuz olabilir)
+ALTER TABLE moderation_flags ADD COLUMN IF NOT EXISTS run_id INT;
+ALTER TABLE moderation_flags ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
+ALTER TABLE moderation_flags ADD COLUMN IF NOT EXISTS manifest TEXT NOT NULL DEFAULT '';
+ALTER TABLE moderation_flags ADD COLUMN IF NOT EXISTS self_harm BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE moderation_flags ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ;
+-- Bir manifest yaşamı boyunca en fazla bir kez işaretlenir
+CREATE UNIQUE INDEX IF NOT EXISTS moderation_flags_code
+  ON moderation_flags (code);
 `;
 
 // Test hesabı — localStorage demosundaki TEST_USER ile birebir aynı içerik
@@ -258,6 +305,7 @@ type UserRow = {
   provider: string;
   verified: boolean;
   created_label: string;
+  created_at?: string | Date; // seçildiyse createdTs olarak döner
 };
 
 export function toClientUser(u: UserRow, manifests: ManifestRow[]) {
@@ -268,6 +316,9 @@ export function toClientUser(u: UserRow, manifests: ManifestRow[]) {
     provider: u.provider as "email" | "google",
     verified: u.verified,
     createdAt: u.created_label,
+    ...(u.created_at
+      ? { createdTs: new Date(u.created_at).getTime() }
+      : {}),
     manifests: manifests.map(toClientManifest),
   };
 }
@@ -343,4 +394,15 @@ export const EMPTY_MAIL: MailSettings = {
 
 export async function getMailSettings(p: Pool): Promise<MailSettings> {
   return { ...EMPTY_MAIL, ...(await getSetting(p, "mail", {})) };
+}
+
+// Moderasyon AI anahtarı — admin panelden (Ayarlar) girilir; panelde boşsa
+// ANTHROPIC_API_KEY ortam değişkenine düşer
+export async function getAiKey(p: Pool): Promise<string> {
+  const v = await getSetting<string>(p, "aiKey", "");
+  return (
+    (typeof v === "string" ? v.trim() : "") ||
+    process.env.ANTHROPIC_API_KEY ||
+    ""
+  );
 }

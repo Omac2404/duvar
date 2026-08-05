@@ -19,13 +19,13 @@ export default function SiteHeader({
   }, []);
 
   return (
-    <header className="sticky top-0 z-[1500] flex h-16 shrink-0 items-center justify-center border-b border-neutral-300/70 bg-white/70 backdrop-blur">
+    <header className="sticky top-0 z-[1500] flex h-16 shrink-0 items-center justify-center border-b border-neutral-300/70 bg-white/70 backdrop-blur md:h-18">
       <a href="/" className="flex items-center" aria-label="Manifest Duvarı — ana sayfa">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/logo.png"
           alt="Manifest Duvarı"
-          className="h-11 w-auto"
+          className="h-14 w-auto md:h-16"
           draggable={false}
         />
       </a>

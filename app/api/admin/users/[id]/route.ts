@@ -4,6 +4,7 @@
 import { getDb, setSetting, trDate } from "../../../../lib/server/db";
 import { isAdmin } from "../../../../lib/server/session";
 import { bad, validManifestCode } from "../../../../lib/server/validate";
+import { sendAccountDeletedMail } from "../../../../lib/server/mailer";
 
 type IncomingManifest = {
   code: string;
@@ -34,8 +35,10 @@ export async function PUT(
     verified?: boolean;
     manifests?: IncomingManifest[];
   };
-  if (!Array.isArray(body.manifests)) return bad("Geçersiz istek.");
-  for (const m of body.manifests)
+  // manifests artık isteğe bağlı: verilmezse yalnızca isim/doğrulama yazılır
+  const manifests = Array.isArray(body.manifests) ? body.manifests : [];
+  const syncManifests = Array.isArray(body.manifests);
+  for (const m of manifests)
     if (!validManifestCode(m.code ?? "")) return bad("Geçersiz manifest kodu.");
 
   const db = await getDb();
@@ -56,16 +59,18 @@ export async function PUT(
         [body.name ?? null, body.verified ?? null, id],
       );
 
-    const codes = new Set(body.manifests.map((m) => m.code));
-    const existing = await client.query(
-      "SELECT code FROM manifests WHERE user_id = $1",
-      [id],
-    );
-    for (const r of existing.rows)
-      if (!codes.has(r.code))
-        await client.query("DELETE FROM manifests WHERE code = $1", [r.code]);
+    const codes = new Set(manifests.map((m) => m.code));
+    if (syncManifests) {
+      const existing = await client.query(
+        "SELECT code FROM manifests WHERE user_id = $1",
+        [id],
+      );
+      for (const r of existing.rows)
+        if (!codes.has(r.code))
+          await client.query("DELETE FROM manifests WHERE code = $1", [r.code]);
+    }
 
-    for (const m of body.manifests) {
+    for (const m of manifests) {
       // Kod başka üyedeyse çakışma hatası
       const clash = await client.query(
         "SELECT user_id FROM manifests WHERE code = $1",
@@ -122,7 +127,18 @@ export async function DELETE(
   if (!(await isAdmin())) return bad("Yetki yok.", 401);
   const { id } = await params;
   const db = await getDb();
+  // E-posta silmeden önce alınır — silinince erişilemez
+  const { rows } = await db.query(
+    "SELECT email, name FROM users WHERE id = $1",
+    [id],
+  );
   await db.query("DELETE FROM users WHERE id = $1", [id]);
   if (id === "u-test") await setSetting(db, "testDeleted", true);
-  return Response.json({ ok: true });
+
+  let mailSent = false;
+  if (rows.length > 0 && rows[0].email) {
+    const r = await sendAccountDeletedMail(db, rows[0].email, rows[0].name);
+    mailSent = r.ok;
+  }
+  return Response.json({ ok: true, mailSent });
 }
