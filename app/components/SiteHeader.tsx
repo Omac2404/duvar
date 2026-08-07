@@ -10,7 +10,7 @@
 
 import { useEffect, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { PANEL_COLORS, currentUser } from "../lib/auth";
+import { currentUser } from "../lib/auth";
 import { fetchSettings, type InstagramSetting } from "../lib/api";
 
 // Üyelik ve Instagram bilgisi API'den gelene kadar son bilinen durum
@@ -147,37 +147,25 @@ export default function SiteHeader({
         >
           Bize Yazın
         </a>
-        {me ? (
-          <a
-            href="/panel"
-            className="flex items-center gap-2 rounded-full border border-neutral-200 bg-white py-1 pl-1 pr-3.5 shadow-sm transition-colors hover:bg-neutral-50 max-[900px]:hidden"
+        {/* Üyelik butonu — mobildeki ile aynı dil: mor çerçeve + kişi ikonu */}
+        <a
+          href={me ? "/panel" : "/uye"}
+          className="flex items-center gap-2 whitespace-nowrap rounded-full border-2 border-violet-500 bg-white px-4 py-1.5 text-sm font-bold text-neutral-900 shadow-sm transition-colors hover:bg-violet-50 max-[900px]:hidden"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4 shrink-0 text-violet-600"
           >
-            <span
-              className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold"
-              style={{
-                background: PANEL_COLORS[me.name.length % PANEL_COLORS.length].base,
-                color: PANEL_COLORS[me.name.length % PANEL_COLORS.length].ink,
-              }}
-            >
-              {me.name
-                .split(/\s+/)
-                .filter(Boolean)
-                .slice(0, 2)
-                .map((p) => p[0].toUpperCase())
-                .join("")}
-            </span>
-            <span className="max-w-32 truncate text-sm font-semibold text-neutral-700">
-              Hesabım
-            </span>
-          </a>
-        ) : (
-          <a
-            href="/uye"
-            className="whitespace-nowrap rounded-full bg-neutral-800 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-neutral-700 max-[900px]:hidden"
-          >
-            Giriş Yap / Üye Ol
-          </a>
-        )}
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+          </svg>
+          {me ? "Hesabım" : "Giriş Yap / Üye Ol"}
+        </a>
 
         {/* Dar ekran: hamburger — linkler ve üyelik panelde toplanır */}
         <button
@@ -185,7 +173,7 @@ export default function SiteHeader({
           aria-label="Menü"
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((o) => !o)}
-          className="hidden h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-neutral-200 bg-white shadow-sm transition-colors hover:bg-neutral-50 max-[900px]:flex"
+          className="hidden h-9 w-9 cursor-pointer items-center justify-center rounded-full border-2 border-violet-500 bg-white shadow-sm transition-colors hover:bg-violet-50 max-[900px]:flex"
         >
           <svg
             viewBox="0 0 24 24"
@@ -237,8 +225,20 @@ export default function SiteHeader({
                 <nav className="flex-1 space-y-1 px-3 py-3">
                   <a
                     href={me ? "/panel" : "/uye"}
-                    className="block rounded-xl px-4 py-3 text-[15px] font-bold text-neutral-900 hover:bg-neutral-50"
+                    className="flex items-center gap-2.5 rounded-xl border-2 border-violet-500 px-4 py-3 text-[15px] font-bold text-neutral-900 transition-colors hover:bg-violet-50"
                   >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-4.5 w-4.5 shrink-0 text-violet-600"
+                    >
+                      <circle cx="12" cy="8" r="4" />
+                      <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+                    </svg>
                     {me ? "Hesabım" : "Giriş Yap / Üye Ol"}
                   </a>
                   <a

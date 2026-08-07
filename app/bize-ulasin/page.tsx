@@ -39,6 +39,8 @@ export default function ContactPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [sent, setSent] = useState(false);
+  // Yasal metinlerin kabulü — işaretlenmeden gönderilemez
+  const [legalOk, setLegalOk] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -148,9 +150,44 @@ export default function ContactPage() {
                 {err}
               </p>
             )}
+            {/* Yasal onay — işaretlenmeden gönderilemez */}
+            <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-relaxed text-neutral-600">
+              <input
+                type="checkbox"
+                checked={legalOk}
+                onChange={(e) => setLegalOk(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-emerald-500"
+              />
+              <span>
+                <a
+                  href="/gizlilik"
+                  target="_blank"
+                  className="font-semibold text-neutral-800 underline underline-offset-2"
+                >
+                  Gizlilik ve KVKK Aydınlatma Metni
+                </a>
+                {"'ni, "}
+                <a
+                  href="/cerez-politikasi"
+                  target="_blank"
+                  className="font-semibold text-neutral-800 underline underline-offset-2"
+                >
+                  Çerez Politikası
+                </a>
+                {"'nı ve "}
+                <a
+                  href="/kullanim-kosullari"
+                  target="_blank"
+                  className="font-semibold text-neutral-800 underline underline-offset-2"
+                >
+                  Kullanım Koşulları
+                </a>
+                {"'nı okudum, kabul ediyorum."}
+              </span>
+            </label>
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || !legalOk}
               className="w-full cursor-pointer rounded-xl bg-neutral-800 py-2.5 text-sm font-semibold text-white transition-all hover:bg-neutral-700 active:scale-[0.99] disabled:cursor-default disabled:opacity-50"
             >
               {busy ? "Gönderiliyor…" : "Gönder"}

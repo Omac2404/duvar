@@ -4,7 +4,8 @@ import type { MetadataRoute } from "next";
 
 export default function robots(): MetadataRoute.Robots {
   return {
-    rules: [{ userAgent: "*", allow: "/", disallow: ["/admin", "/api/"] }],
+    // Not: admin yolu bilerek listelenmez (robots.txt herkese açıktır)
+    rules: [{ userAgent: "*", allow: "/", disallow: ["/api/"] }],
     sitemap: "https://manifestduvari.com/sitemap.xml",
   };
 }

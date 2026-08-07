@@ -31,9 +31,8 @@ export async function generateMetadata(): Promise<Metadata> {
     return {
       title: seo.title,
       description: seo.description,
-      ...(fav
-        ? { icons: { icon: `/api/favicon?v=${fav.length}` } }
-        : {}),
+      // Favicon admin'den yüklendiyse o, yoksa site logosu kullanılır
+      icons: { icon: fav ? `/api/favicon?v=${fav.length}` : "/logo.png" },
     };
   } catch {
     // DB'ye ulaşılamazsa varsayılanlarla açılır

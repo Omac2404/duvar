@@ -29,9 +29,15 @@ import {
   adminDeleteDemos,
   adminDeleteManifest,
   adminDeleteUser,
+  adminAccounts,
+  adminCreateAccount,
+  adminDeleteAccount,
   adminGenerateDemo,
   adminLogin,
+  adminLogout,
   adminManifests,
+  adminVerifyLogin,
+  type AdminAccount,
   type AdminManifestItem,
   type AdminManifestList,
   adminModeration,
@@ -596,9 +602,14 @@ function SponsorLetterPreview({ c }: { c: SponsorCampaign }) {
 export default function AdminPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [ready, setReady] = useState(false);
-  // Admin girişi — ADMIN_PASSWORD ortam değişkeniyle, cookie 7 gün geçerli
+  // Admin girişi — iki adımlı: e-posta+şifre, ardından e-posta kodu
   const [authed, setAuthed] = useState<boolean | null>(null);
+  const [meSuper, setMeSuper] = useState(false);
+  const [adminMail, setAdminMail] = useState("");
   const [adminPass, setAdminPass] = useState("");
+  const [adminCode, setAdminCode] = useState("");
+  const [adminStep, setAdminStep] = useState<"cred" | "code">("cred");
+  const [adminDemoCode, setAdminDemoCode] = useState("");
   const [adminErr, setAdminErr] = useState("");
   const [tab, setTab] = useState<
     | "overview"
@@ -671,6 +682,12 @@ export default function AdminPage() {
   // Genel Bakış istatistikleri — kartlar + 30 günlük seriler
   const [stat, setStat] = useState<AdminStats | null>(null);
 
+  // Admin hesapları (Ayarlar > Adminler — yalnız süper admin görür)
+  const [accounts, setAccounts] = useState<AdminAccount[]>([]);
+  const [admMail, setAdmMail] = useState("");
+  const [admPass, setAdmPass] = useState("");
+  const [admMsg, setAdmMsg] = useState("");
+
   // Otomatik bildirim anahtarları (Bildirimler sekmesi)
   const [notify, setNotify] = useState<NotifySettings>({
     moderation: true,
@@ -683,6 +700,7 @@ export default function AdminPage() {
     milestone250: true,
     cheer100: true,
     contactForward: true,
+    adminLogin: true,
   });
 
   // Arama alanları — üyeler (isim/e-posta) ve üye manifestleri (kod/rumuz)
@@ -735,7 +753,10 @@ export default function AdminPage() {
 
   // Önce oturum kontrolü; yetki varsa veriler backend'den yüklenir
   useEffect(() => {
-    adminCheck().then(setAuthed);
+    adminCheck().then((r) => {
+      setAuthed(r.ok);
+      setMeSuper(!!r.isSuper);
+    });
   }, []);
 
   useEffect(() => {
@@ -773,11 +794,39 @@ export default function AdminPage() {
     });
   }, [authed]);
 
+  // Admin hesap listesi — yalnız süper admin çeker
+  useEffect(() => {
+    if (authed && meSuper) void adminAccounts().then(setAccounts);
+  }, [authed, meSuper]);
+
+  // 1. adım: e-posta + şifre → kod e-postaya gider (SMTP yoksa ekranda)
   async function handleAdminLogin(e: React.FormEvent) {
     e.preventDefault();
     setAdminErr("");
-    const r = await adminLogin(adminPass);
-    if (!r.ok) return setAdminErr("Şifre hatalı.");
+    const r = await adminLogin(adminMail, adminPass).catch(() => null);
+    if (!r?.ok) return setAdminErr(r?.error ?? "E-posta ya da şifre hatalı.");
+    // Doğrulama bildirimi kapalıysa oturum tek adımda açılır
+    if (r.direct) {
+      const me = await adminCheck();
+      setMeSuper(!!me.isSuper);
+      setAuthed(true);
+      return;
+    }
+    if (r.waitSec)
+      return setAdminErr(`Yeni kod için ${r.waitSec} sn bekle, sonra tekrar dene.`);
+    setAdminDemoCode(r.demoCode ?? "");
+    setAdminCode("");
+    setAdminStep("code");
+  }
+
+  // 2. adım: e-posta kodu → oturum açılır
+  async function handleAdminVerify(e: React.FormEvent) {
+    e.preventDefault();
+    setAdminErr("");
+    const r = await adminVerifyLogin(adminMail, adminCode).catch(() => null);
+    if (!r?.ok) return setAdminErr(r?.error ?? "Kod doğrulanamadı.");
+    const me = await adminCheck();
+    setMeSuper(!!me.isSuper);
     setAuthed(true);
   }
 
@@ -1108,23 +1157,87 @@ export default function AdminPage() {
   if (authed === false)
     return (
       <main className="flex min-h-screen items-center justify-center bg-neutral-100 px-4">
+        {adminStep === "code" ? (
+          <form
+            onSubmit={handleAdminVerify}
+            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+          >
+            <h1 className="text-lg font-bold text-neutral-800">
+              İki Adımlı Doğrulama
+            </h1>
+            <p className="mt-1 text-xs text-neutral-400">
+              {adminMail} adresine gönderilen 6 haneli kodu gir.
+            </p>
+            {adminDemoCode && (
+              <p className="mt-3 rounded-xl bg-amber-50 px-4 py-2.5 text-xs font-medium text-amber-700">
+                📬 E-posta gönderilemedi (SMTP yapılandırılmamış ya da kod
+                bildirimi kapalı). Kodun:{" "}
+                <b className="font-mono text-sm tracking-widest">
+                  {adminDemoCode}
+                </b>
+              </p>
+            )}
+            <input
+              value={adminCode}
+              onChange={(e) =>
+                setAdminCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+              }
+              placeholder="······"
+              inputMode="numeric"
+              className={`${inputCls} mt-4 text-center text-2xl tracking-[0.6em] placeholder:tracking-[0.3em]`}
+              autoFocus
+            />
+            {adminErr && (
+              <p className="mt-2 text-xs font-medium text-red-500">
+                {adminErr}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={adminCode.length !== 6}
+              className="mt-4 w-full cursor-pointer rounded-xl bg-neutral-800 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-neutral-700 disabled:cursor-default disabled:opacity-50"
+            >
+              Doğrula ve Giriş Yap
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAdminStep("cred");
+                setAdminErr("");
+              }}
+              className="mt-2 w-full cursor-pointer rounded-xl py-2 text-center text-xs font-medium text-neutral-500 hover:bg-neutral-50"
+            >
+              ← Geri dön
+            </button>
+          </form>
+        ) : (
         <form
           onSubmit={handleAdminLogin}
           className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
         >
           <h1 className="text-lg font-bold text-neutral-800">
-            🛠️ Admin Paneli
+            Admin Paneli
           </h1>
           <p className="mt-1 text-xs text-neutral-400">
-            Devam etmek için admin şifresini gir.
+            Admin hesabınla giriş yap. Bildirimler&apos;de admin giriş
+            doğrulaması açıksa e-posta koduyla ikinci adım istenir.
           </p>
+          <input
+            type="email"
+            value={adminMail}
+            onChange={(e) => setAdminMail(e.target.value)}
+            placeholder="Admin e-postası"
+            className={`${inputCls} mt-4`}
+            autoComplete="username"
+            autoFocus
+          />
           <input
             type="password"
             value={adminPass}
             onChange={(e) => setAdminPass(e.target.value)}
-            placeholder="Admin şifresi"
-            className={`${inputCls} mt-4`}
-            autoFocus
+            placeholder="Şifre"
+            className={`${inputCls} mt-3`}
+            autoComplete="current-password"
           />
           {adminErr && (
             <p className="mt-2 text-xs font-medium text-red-500">{adminErr}</p>
@@ -1136,6 +1249,7 @@ export default function AdminPage() {
             Giriş Yap
           </button>
         </form>
+        )}
       </main>
     );
 
@@ -1177,9 +1291,6 @@ export default function AdminPage() {
         <span className="text-sm font-bold tracking-wide">
           🛠️ Admin Paneli
         </span>
-        <span className="rounded bg-white/15 px-1.5 py-0.5 text-[10px] font-medium text-white/80">
-          DEMO
-        </span>
         <nav className="ml-auto flex items-center gap-2 text-xs">
           <a
             href="/"
@@ -1193,6 +1304,17 @@ export default function AdminPage() {
           >
             Üye Paneli
           </a>
+          <button
+            type="button"
+            onClick={() => {
+              void adminLogout().then(() => {
+                window.location.href = "/";
+              });
+            }}
+            className="cursor-pointer rounded-full border border-red-300/40 bg-red-500/20 px-3 py-1.5 font-medium text-red-100 transition-colors hover:bg-red-500/35"
+          >
+            Çıkış Yap
+          </button>
         </nav>
       </header>
 
@@ -2888,6 +3010,16 @@ export default function AdminPage() {
                         "yanıtlayınca cevap doğrudan gönderene gider.",
                       tone: "bg-sky-50/60",
                     },
+                    {
+                      key: "adminLogin",
+                      title: "Admin giriş doğrulaması",
+                      desc:
+                        "Açıkken admin girişi iki adımlıdır: şifreden sonra " +
+                        "e-postaya 6 haneli kod gider. Kapalıyken admin " +
+                        "yalnızca şifreyle girer. Canlıya taşırken kapalı " +
+                        "tut; SMTP kurulduktan sonra aç.",
+                      tone: "bg-amber-50/70",
+                    },
                   ] as const
                 ).map((row) => (
                   <div
@@ -3075,6 +3207,114 @@ export default function AdminPage() {
                 </button>
               </div>
             </section>
+
+            {/* ── Adminler — yalnız süper admin görür ── */}
+            {meSuper && (
+              <section className="rounded-2xl bg-white p-5 shadow-sm">
+                <h2 className="text-sm font-bold text-neutral-700">
+                  👑 Adminler
+                </h2>
+                <p className="mt-1 text-xs text-neutral-400">
+                  Yeni adminler yalnızca süper admin tarafından oluşturulur;
+                  her admin girişte iki adımlı e-posta doğrulamasından geçer.
+                </p>
+                <div className="mt-3 space-y-2">
+                  {accounts.map((a) => (
+                    <div
+                      key={a.id}
+                      className="flex flex-wrap items-center gap-3 rounded-xl bg-neutral-50 px-4 py-2.5"
+                    >
+                      <span className="text-sm font-semibold text-neutral-700">
+                        {a.email}
+                      </span>
+                      {a.isSuper ? (
+                        <Chip tone="violet">süper admin</Chip>
+                      ) : (
+                        <Chip tone="neutral">admin</Chip>
+                      )}
+                      <span className="ml-auto text-[11px] text-neutral-400">
+                        {new Date(a.createdAt).toLocaleDateString("tr-TR", {
+                          day: "numeric",
+                          month: "long",
+                          year: "numeric",
+                        })}
+                      </span>
+                      {!a.isSuper && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void adminDeleteAccount(a.id).then(() =>
+                              adminAccounts().then(setAccounts),
+                            );
+                          }}
+                          className="cursor-pointer rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs font-medium text-neutral-500 transition-colors hover:border-red-300 hover:text-red-500"
+                        >
+                          Sil
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 flex flex-wrap items-end gap-3">
+                  <label className="block min-w-56 flex-1">
+                    <span className="mb-1 block text-xs font-medium text-neutral-500">
+                      E-posta
+                    </span>
+                    <input
+                      type="email"
+                      className={inputCls}
+                      value={admMail}
+                      onChange={(e) => {
+                        setAdmMsg("");
+                        setAdmMail(e.target.value);
+                      }}
+                      placeholder="yeni-admin@eposta.com"
+                    />
+                  </label>
+                  <label className="block min-w-56 flex-1">
+                    <span className="mb-1 block text-xs font-medium text-neutral-500">
+                      Şifre (en az 8 karakter, harf + rakam)
+                    </span>
+                    <input
+                      type="password"
+                      className={inputCls}
+                      value={admPass}
+                      onChange={(e) => {
+                        setAdmMsg("");
+                        setAdmPass(e.target.value);
+                      }}
+                      placeholder="••••••••"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void adminCreateAccount(admMail, admPass).then((r) => {
+                        if (!r.ok) return setAdmMsg(r.error ?? "Eklenemedi.");
+                        setAdmMail("");
+                        setAdmPass("");
+                        setAdmMsg("✓ Admin eklendi");
+                        void adminAccounts().then(setAccounts);
+                      });
+                    }}
+                    className="cursor-pointer rounded-xl bg-neutral-800 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-neutral-700"
+                  >
+                    Admin Ekle
+                  </button>
+                </div>
+                {admMsg && (
+                  <p
+                    className={`mt-2 text-sm font-medium ${
+                      admMsg.startsWith("✓")
+                        ? "text-emerald-600"
+                        : "text-red-500"
+                    }`}
+                  >
+                    {admMsg}
+                  </p>
+                )}
+              </section>
+            )}
 
             {/* ── SEO — snippet, head kodu, favicon, site haritası ── */}
             <section className="rounded-2xl bg-white p-5 shadow-sm">

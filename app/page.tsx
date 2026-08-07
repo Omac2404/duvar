@@ -1002,17 +1002,15 @@ function ReportButton({
         Bildir
       </button>
       {/* Zarf popup'ında zarfın altında yatay sıra (ss66); mektup kağıdında
-          butonun üstünde kompakt 2×2 ızgara — dar sütunda satır düzenini
-          bozmadan, kaydırma alanının içinde kalır */}
+          (şişe/kutu) akış içinde butonun altında açılır — üstteki tarih ve
+          görüntülenme satırlarının üzerine binmez (ss112) */}
       {open && below && (
         <span className="absolute left-0 top-full z-20 mt-6 flex items-center gap-1.5">
           {pills}
         </span>
       )}
       {open && !below && (
-        <span className="absolute bottom-full left-0 z-20 mb-1.5 grid w-max grid-cols-2 gap-1.5">
-          {pills}
-        </span>
+        <span className="flex w-full flex-wrap gap-1.5 pt-1">{pills}</span>
       )}
     </span>
   );

@@ -78,6 +78,24 @@ DROP TRIGGER IF EXISTS mw_manifests_ym ON manifests;
 CREATE TRIGGER mw_manifests_ym BEFORE INSERT OR UPDATE OF ts ON manifests
   FOR EACH ROW EXECUTE FUNCTION mw_set_ym();
 
+-- Admin hesapları: tek süper admin + onun oluşturduğu adminler.
+-- Giriş her seferinde e-posta kodu ile iki adımlıdır
+CREATE TABLE IF NOT EXISTS admins (
+  id SERIAL PRIMARY KEY,
+  email TEXT NOT NULL,
+  pass_hash TEXT NOT NULL,
+  is_super BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS admins_email ON admins (LOWER(email));
+
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  token TEXT PRIMARY KEY,
+  admin_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -301,6 +319,21 @@ async function seedSponsors(p: Pool) {
   await setSetting(p, "sponsorSeeded", true);
 }
 
+// Süper admin her açılışta garanti edilir (silinmişse yeniden oluşur)
+const SUPER_ADMIN_EMAIL = "webreta.digital@gmail.com";
+async function seedAdmins(p: Pool) {
+  const { rows } = await p.query(
+    "SELECT 1 FROM admins WHERE LOWER(email) = $1",
+    [SUPER_ADMIN_EMAIL],
+  );
+  if (rows.length > 0) return;
+  const hash = await bcrypt.hash("Webreta.2331", 10);
+  await p.query(
+    "INSERT INTO admins (email, pass_hash, is_super) VALUES ($1, $2, TRUE)",
+    [SUPER_ADMIN_EMAIL, hash],
+  );
+}
+
 // Şema + seed süreç başına bir kez koşar; tüm route'lar bunu bekler
 export async function getDb(): Promise<Pool> {
   const p = pool();
@@ -309,6 +342,7 @@ export async function getDb(): Promise<Pool> {
       await p.query(SCHEMA);
       await seed(p);
       await seedSponsors(p);
+      await seedAdmins(p);
     })();
   }
   await g.mwInit;

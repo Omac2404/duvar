@@ -204,17 +204,67 @@ export function submitReport(r: {
 
 // ── Admin ────────────────────────────────────────────────────────────────
 
-export async function adminCheck(): Promise<boolean> {
+// Oturum kontrolü — girişliyse admin kimliği de döner
+export type AdminMe = { ok: boolean; email?: string; isSuper?: boolean };
+
+export async function adminCheck(): Promise<AdminMe> {
   try {
     const res = await fetch("/api/admin/login");
-    return (await json<{ ok: boolean }>(res)).ok;
+    return await json<AdminMe>(res);
   } catch {
-    return false;
+    return { ok: false };
   }
 }
 
-export function adminLogin(password: string) {
-  return post<{ ok: boolean; error?: string }>("/api/admin/login", { password });
+// 1. adım: e-posta + şifre → kod gönderilir (SMTP yoksa demoCode döner).
+// Admin giriş doğrulaması kapalıysa direct: true ile oturum hemen açılır
+export function adminLogin(email: string, password: string) {
+  return post<{
+    ok: boolean;
+    direct?: boolean;
+    sent?: boolean;
+    demoCode?: string;
+    waitSec?: number;
+    error?: string;
+  }>("/api/admin/login", { email, password });
+}
+
+// 2. adım: e-posta kodu → oturum açılır
+export function adminVerifyLogin(email: string, code: string) {
+  return post<{ ok: boolean; error?: string }>("/api/admin/login", {
+    email,
+    code,
+  });
+}
+
+export function adminLogout() {
+  return post<{ ok: boolean }>("/api/admin/login", undefined, "DELETE");
+}
+
+// ── Admin hesapları (yalnızca süper admin) ──────────────────────────────
+
+export type AdminAccount = {
+  id: number;
+  email: string;
+  isSuper: boolean;
+  createdAt: number;
+};
+
+export async function adminAccounts(): Promise<AdminAccount[]> {
+  const res = await fetch("/api/admin/admins");
+  if (!res.ok) return [];
+  return (await json<{ admins: AdminAccount[] }>(res)).admins;
+}
+
+export function adminCreateAccount(email: string, password: string) {
+  return post<{ ok: boolean; error?: string }>("/api/admin/admins", {
+    email,
+    password,
+  });
+}
+
+export function adminDeleteAccount(id: number) {
+  return post<{ ok: boolean }>(`/api/admin/admins?id=${id}`, undefined, "DELETE");
 }
 
 export async function adminUsers(): Promise<User[]> {
@@ -407,6 +457,7 @@ export type NotifySettings = {
   milestone250: boolean; // 250 şans: hediye kutusu hakkı maili
   cheer100: boolean; // her 100 tebrikte kutlama maili
   contactForward: boolean; // form bildirimi (bize gelen) SMTP adresine
+  adminLogin: boolean; // admin girişindeki doğrulama kodu maili
 };
 
 export async function adminSettings(): Promise<AdminSettings | null> {

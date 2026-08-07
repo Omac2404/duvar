@@ -4,7 +4,7 @@
 // (bu ölçekte tablo gerektirmeyecek kadar basit; şifre değişince düşer).
 
 import { cookies } from "next/headers";
-import { createHash, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 import { getDb, toClientUser, type ManifestRow } from "./db";
 
 const SESSION_COOKIE = "mw_session";
@@ -72,30 +72,52 @@ export async function sessionUser() {
 }
 
 // ── Admin ────────────────────────────────────────────────────────────────
+// Adminler admins tablosunda yaşar; giriş her seferinde e-posta koduyla
+// iki adımlıdır. Oturum token'ı admin_sessions tablosunda saklanır
 
-function adminPassword(): string {
-  return process.env.ADMIN_PASSWORD ?? "manifest-admin";
-}
+const ADMIN_SESSION_DAYS = 7;
 
-function adminDigest(): string {
-  return createHash("sha256").update("mw-admin:" + adminPassword()).digest("hex");
-}
+export type AdminIdentity = { id: number; email: string; isSuper: boolean };
 
-export function checkAdminPassword(pass: string): boolean {
-  return pass === adminPassword();
-}
-
-export async function grantAdmin() {
-  (await cookies()).set(ADMIN_COOKIE, adminDigest(), {
+export async function grantAdmin(adminId: number) {
+  const db = await getDb();
+  const token = randomBytes(32).toString("hex");
+  const expires = new Date(Date.now() + ADMIN_SESSION_DAYS * 86400000);
+  await db.query(
+    "INSERT INTO admin_sessions (token, admin_id, expires_at) VALUES ($1, $2, $3)",
+    [token, adminId, expires],
+  );
+  (await cookies()).set(ADMIN_COOKIE, token, {
     ...cookieBase,
-    maxAge: 7 * 86400,
+    maxAge: ADMIN_SESSION_DAYS * 86400,
   });
 }
 
+// Oturumdaki admin (yoksa null)
+export async function currentAdmin(): Promise<AdminIdentity | null> {
+  const token = (await cookies()).get(ADMIN_COOKIE)?.value;
+  if (!token) return null;
+  const db = await getDb();
+  const { rows } = await db.query(
+    `SELECT a.id, a.email, a.is_super FROM admin_sessions s
+     JOIN admins a ON a.id = s.admin_id
+     WHERE s.token = $1 AND s.expires_at > now()`,
+    [token],
+  );
+  if (rows.length === 0) return null;
+  return { id: rows[0].id, email: rows[0].email, isSuper: rows[0].is_super };
+}
+
 export async function isAdmin(): Promise<boolean> {
-  return (await cookies()).get(ADMIN_COOKIE)?.value === adminDigest();
+  return (await currentAdmin()) !== null;
 }
 
 export async function revokeAdmin() {
-  (await cookies()).delete(ADMIN_COOKIE);
+  const jar = await cookies();
+  const token = jar.get(ADMIN_COOKIE)?.value;
+  if (token) {
+    const db = await getDb();
+    await db.query("DELETE FROM admin_sessions WHERE token = $1", [token]);
+  }
+  jar.delete(ADMIN_COOKIE);
 }

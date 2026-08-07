@@ -381,6 +381,7 @@ export type NotifySettings = {
   milestone250: boolean; // 250 şans: hediye kutusu hakkı maili
   cheer100: boolean; // her 100 tebrikte kutlama maili
   contactForward: boolean; // iletişim formu mesajı SMTP adresine iletilir
+  adminLogin: boolean; // admin girişindeki iki adımlı doğrulama kodu
 };
 
 export const DEFAULT_NOTIFY: NotifySettings = {
@@ -394,6 +395,9 @@ export const DEFAULT_NOTIFY: NotifySettings = {
   milestone250: true,
   cheer100: true,
   contactForward: true,
+  // Varsayılan KAPALI: canlıya ilk taşımada SMTP henüz yokken admin
+  // şifreyle tek adımda girebilsin; SMTP kurulunca panelden açılır
+  adminLogin: false,
 };
 
 export async function getNotify(p: Pool): Promise<NotifySettings> {

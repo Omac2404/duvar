@@ -197,6 +197,40 @@ export async function sendAccountDeletedMail(p: Pool, to: string, name: string) 
   );
 }
 
+// ── Admin giriş doğrulama kodu — iki adımlı girişin ikinci adımı ────────
+// Anahtar kapalıysa ya da SMTP yoksa kod ekrana düşer (demo bildirimi)
+export async function sendAdminCodeMail(p: Pool, to: string, code: string) {
+  if (!(await getNotify(p)).adminLogin)
+    return { ok: false, error: "Bildirim kapalı (admin)" };
+  const html = `
+  <div style="margin:0;padding:32px 16px;background-color:#f4f1ea;font-family:Arial,Helvetica,sans-serif;">
+    <div style="max-width:440px;margin:0 auto;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 8px 28px rgba(0,0,0,0.08);">
+      <div style="height:6px;background-color:#262626;"></div>
+      <div style="padding:28px 32px;">
+        <p style="margin:0;font-size:20px;font-weight:bold;color:#262626;">Manifest Duvar&#305; &#8212; Admin</p>
+        <p style="margin:14px 0 0;font-size:14px;line-height:1.6;color:#525252;">
+          Admin paneline giri&#351; kodun a&#351;a&#287;&#305;da. Kod <b>10 dakika</b> ge&#231;erli.
+        </p>
+        <div style="margin:22px 0;padding:20px 0;background-color:#f5f5f4;border:1px solid #e7e5e4;border-radius:12px;text-align:center;">
+          <span style="display:inline-block;font-size:36px;font-weight:bold;letter-spacing:12px;padding-left:12px;color:#262626;font-family:'Courier New',Courier,monospace;">${code}</span>
+        </div>
+        <p style="margin:0;font-size:12px;line-height:1.6;color:#a3a3a3;">
+          Bu giri&#351;i sen yapmad&#305;ysan &#351;ifreni hemen de&#287;i&#351;tir.
+        </p>
+      </div>
+    </div>
+  </div>`;
+  return sendMail(
+    p,
+    to,
+    "Manifest Duvarı Admin: Giriş Kodun",
+    `Admin paneline giriş kodun: ${code}\n\n` +
+      "Kod 10 dakika geçerli. Bu girişi sen yapmadıysan şifreni hemen " +
+      "değiştir.\n\nManifest Duvarı",
+    html,
+  );
+}
+
 // ── Başarım (şans eşiği) bildirimleri ───────────────────────────────────
 // Manifest 20/50/150/250 şansa ulaştığında sahibine kutlama maili gider;
 // her eşik admin panelin Bildirimler sekmesinden ayrı ayrı açılıp kapanır.
