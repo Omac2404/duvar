@@ -376,6 +376,15 @@ export type AdminSettings = {
   notify: NotifySettings;
   seo: SeoSettings;
   favicon: string; // data URL (boş: varsayılan ikon)
+  legal: LegalSettings;
+};
+
+// Yasal sayfa metinleri (admin İçerik > Yasal Sayfalar)
+export type LegalSettings = {
+  privacy: string;
+  cookies: string;
+  terms: string;
+  cookieBanner: string;
 };
 
 // SEO ayarları (admin Ayarlar > SEO bölümü)
@@ -419,6 +428,7 @@ export function adminSaveSettings(patch: {
   notify?: Partial<NotifySettings>;
   seo?: Partial<SeoSettings>;
   favicon?: string;
+  legal?: Partial<LegalSettings>;
 }) {
   return post<{ ok: boolean }>("/api/admin/settings", patch, "PUT");
 }

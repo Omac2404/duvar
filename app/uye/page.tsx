@@ -120,6 +120,8 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [pass2, setPass2] = useState("");
+  // Yasal metinlerin kabulü — işaretlenmeden üye olunamaz
+  const [legalOk, setLegalOk] = useState(false);
   const [code, setCode] = useState("");
   const [resendIn, setResendIn] = useState(0);
   // Şifre sıfırlama: kod doğrulanınca sunucudan alınan tek kullanımlık jeton
@@ -190,6 +192,10 @@ export default function AuthPage() {
     const pIssue = passwordIssue(pass);
     if (pIssue) return setErr(pIssue);
     if (pass !== pass2) return setErr("Şifreler birbiriyle uyuşmuyor.");
+    if (!legalOk)
+      return setErr(
+        "Üye olmak için gizlilik, çerez ve kullanım koşullarını kabul etmelisin.",
+      );
     const r = await registerUser(nm, email, pass);
     if (!r.ok) return setErr(r.error ?? "Kayıt başarısız.");
     // switchMode kullanılmaz: dispatchCode'un gönderim mesajları korunur
@@ -458,7 +464,46 @@ export default function AuthPage() {
                   autoComplete="new-password"
                 />
               </Field>
-              <button type="submit" disabled={busy} className={primaryBtn}>
+              {/* Yasal onay — işaretlenmeden üye olunamaz */}
+              <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-relaxed text-neutral-600">
+                <input
+                  type="checkbox"
+                  checked={legalOk}
+                  onChange={(e) => setLegalOk(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-emerald-500"
+                />
+                <span>
+                  <a
+                    href="/gizlilik"
+                    target="_blank"
+                    className="font-semibold text-neutral-800 underline underline-offset-2"
+                  >
+                    Gizlilik ve KVKK Aydınlatma Metni
+                  </a>
+                  {"'ni, "}
+                  <a
+                    href="/cerez-politikasi"
+                    target="_blank"
+                    className="font-semibold text-neutral-800 underline underline-offset-2"
+                  >
+                    Çerez Politikası
+                  </a>
+                  {"'nı ve "}
+                  <a
+                    href="/kullanim-kosullari"
+                    target="_blank"
+                    className="font-semibold text-neutral-800 underline underline-offset-2"
+                  >
+                    Kullanım Koşulları
+                  </a>
+                  {"'nı okudum, kabul ediyorum."}
+                </span>
+              </label>
+              <button
+                type="submit"
+                disabled={busy || !legalOk}
+                className={primaryBtn}
+              >
                 Üye Ol
               </button>
             </form>

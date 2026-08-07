@@ -2,8 +2,10 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Caveat } from "next/font/google";
 import "./globals.css";
 import { getDb, getSetting } from "./lib/server/db";
-import { getSeo } from "./lib/server/content";
+import { getLegal, getSeo } from "./lib/server/content";
 import HeadCode from "./components/HeadCode";
+import SiteFooter from "./components/SiteFooter";
+import CookieConsent from "./components/CookieConsent";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -45,8 +47,11 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   let headCode = "";
+  let cookieBanner = "";
   try {
-    headCode = (await getSeo(await getDb())).headCode;
+    const db = await getDb();
+    headCode = (await getSeo(db)).headCode;
+    cookieBanner = (await getLegal(db)).cookieBanner;
   } catch {}
   return (
     <html
@@ -56,6 +61,9 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col">
         <HeadCode code={headCode} />
         {children}
+        {/* Sitenin en altında ince yasal bar (ss111) + çerez kutusu */}
+        <SiteFooter />
+        <CookieConsent text={cookieBanner} />
       </body>
     </html>
   );

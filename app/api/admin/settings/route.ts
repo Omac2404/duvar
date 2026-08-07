@@ -11,11 +11,13 @@ import {
   getFaq,
   getInstagram,
   getMarquee,
+  getLegal,
   getNotify,
   getSeo,
   SITE_PAGES,
   type FaqItem,
   type InstagramSetting,
+  type LegalSettings,
   type MarqueeSetting,
   type NotifySettings,
   type SeoSettings,
@@ -39,6 +41,7 @@ export async function GET() {
     notify: await getNotify(db),
     seo: await getSeo(db),
     favicon: await getSetting(db, "favicon", ""),
+    legal: await getLegal(db),
   });
 }
 
@@ -57,6 +60,7 @@ export async function PUT(req: Request) {
     notify?: Partial<NotifySettings>;
     seo?: Partial<SeoSettings>;
     favicon?: string;
+    legal?: Partial<LegalSettings>;
   };
   const db = await getDb();
   if (body.mail !== undefined) {
@@ -121,6 +125,18 @@ export async function PUT(req: Request) {
     if (f && !/^data:image\//.test(f)) return bad("Geçersiz favicon.");
     if (f.length > 200_000) return bad("Favicon çok büyük (en fazla ~150KB).");
     await setSetting(db, "favicon", f);
+  }
+  if (body.legal !== undefined) {
+    const cur = await getLegal(db);
+    await setSetting(db, "legal", {
+      privacy: String(body.legal.privacy ?? cur.privacy).slice(0, 30000),
+      cookies: String(body.legal.cookies ?? cur.cookies).slice(0, 30000),
+      terms: String(body.legal.terms ?? cur.terms).slice(0, 30000),
+      cookieBanner: String(body.legal.cookieBanner ?? cur.cookieBanner).slice(
+        0,
+        400,
+      ),
+    });
   }
   return Response.json({ ok: true });
 }

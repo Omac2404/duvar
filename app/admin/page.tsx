@@ -54,6 +54,7 @@ import {
   type ContactMessage,
   type FaqItem,
   type InstagramSetting,
+  type LegalSettings,
   type MarqueeSetting,
   type NotifySettings,
   type SeoSettings,
@@ -648,6 +649,15 @@ export default function AdminPage() {
   const [simYear, setSimYear] = useState("");
   const [simSaved, setSimSaved] = useState(false);
 
+  // Yasal sayfalar (İçerik) — Gizlilik/KVKK, Çerez, Kullanım + çerez kutusu
+  const [legal, setLegal] = useState<LegalSettings>({
+    privacy: "",
+    cookies: "",
+    terms: "",
+    cookieBanner: "",
+  });
+  const [legalSaved, setLegalSaved] = useState(false);
+
   // SEO (Ayarlar) — snippet, head kodu, favicon, site haritası
   const [seoCfg, setSeoCfg] = useState<SeoSettings>({
     title: "",
@@ -757,6 +767,7 @@ export default function AdminPage() {
         if (s.notify) setNotify(s.notify);
         if (s.seo) setSeoCfg(s.seo);
         setFavData(s.favicon ?? "");
+        if (s.legal) setLegal(s.legal);
       }
       setReady(true);
     });
@@ -2684,6 +2695,96 @@ export default function AdminPage() {
               </div>
             </section>
 
+            {/* Yasal sayfalar — metinler + çerez kutusu */}
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-neutral-700">
+                ⚖️ Yasal Sayfalar
+              </h2>
+              <p className="mt-1 text-xs text-neutral-400">
+                Sitenin alt barındaki yasal sayfaların metinleri ve çerez
+                kabul kutusunun yazısı buradan düzenlenir.
+              </p>
+              <div className="mt-4 space-y-4">
+                {(
+                  [
+                    {
+                      key: "privacy",
+                      title: "Gizlilik ve KVKK Aydınlatma Metni",
+                      href: "/gizlilik",
+                      rows: 10,
+                    },
+                    {
+                      key: "cookies",
+                      title: "Çerez Politikası",
+                      href: "/cerez-politikasi",
+                      rows: 8,
+                    },
+                    {
+                      key: "terms",
+                      title: "Kullanım Koşulları",
+                      href: "/kullanim-kosullari",
+                      rows: 8,
+                    },
+                  ] as const
+                ).map((p) => (
+                  <label key={p.key} className="block">
+                    <span className="mb-1 flex items-center justify-between text-xs font-medium text-neutral-500">
+                      <span>{p.title}</span>
+                      <a
+                        href={p.href}
+                        target="_blank"
+                        className="font-semibold text-sky-600 hover:underline"
+                      >
+                        Sayfayı gör →
+                      </a>
+                    </span>
+                    <textarea
+                      rows={p.rows}
+                      className={`${inputCls} text-[13px]`}
+                      value={legal[p.key]}
+                      onChange={(e) => {
+                        setLegalSaved(false);
+                        setLegal((l) => ({ ...l, [p.key]: e.target.value }));
+                      }}
+                    />
+                  </label>
+                ))}
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-neutral-500">
+                    Çerez kabul kutusu metni (sitede altta çıkar; boş
+                    bırakılırsa kutu gösterilmez)
+                  </span>
+                  <textarea
+                    rows={2}
+                    className={inputCls}
+                    value={legal.cookieBanner}
+                    maxLength={400}
+                    onChange={(e) => {
+                      setLegalSaved(false);
+                      setLegal((l) => ({ ...l, cookieBanner: e.target.value }));
+                    }}
+                  />
+                </label>
+              </div>
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void adminSaveSettings({ legal }).then((r) => {
+                      if (r.ok) setLegalSaved(true);
+                    });
+                  }}
+                  className="cursor-pointer rounded-xl bg-emerald-500 px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-600"
+                >
+                  Kaydet
+                </button>
+                {legalSaved && (
+                  <span className="text-sm font-medium text-emerald-600">
+                    ✓ Kaydedildi
+                  </span>
+                )}
+              </div>
+            </section>
           </div>
         )}
 

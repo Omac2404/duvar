@@ -270,6 +270,104 @@ export async function getSeo(p: Pool): Promise<SeoSettings> {
   return { ...DEFAULT_SEO, ...(await getSetting(p, "seo", {})) };
 }
 
+// ── Yasal sayfalar — Gizlilik/KVKK, Çerez, Kullanım Koşulları ───────────
+// Metinler admin panelin İçerik sekmesindeki Yasal Sayfalar bölümünden
+// düzenlenir; çerez kabul kutusunun metni de burada tutulur
+
+export type LegalSettings = {
+  privacy: string; // Gizlilik ve KVKK Aydınlatma Metni
+  cookies: string; // Çerez Politikası
+  terms: string; // Kullanım Koşulları
+  cookieBanner: string; // sitedeki çerez kabul kutusunun metni
+};
+
+export const DEFAULT_LEGAL: LegalSettings = {
+  privacy:
+    "Manifest Duvarı olarak kişisel verilerinizin güvenliğine önem veriyoruz. " +
+    "Bu aydınlatma metni, 6698 sayılı Kişisel Verilerin Korunması Kanunu " +
+    "(KVKK) kapsamında veri sorumlusu sıfatıyla Manifest Duvarı " +
+    "(manifestduvari.com) tarafından hazırlanmıştır.\n\n" +
+    "1. İşlenen Kişisel Veriler\n" +
+    "Üyelik oluşturduğunuzda isim-soyisim ve e-posta adresiniz; Google ile " +
+    "giriş yaptığınızda Google hesabınızın adı ve e-posta adresi; iletişim " +
+    "formunu doldurduğunuzda isim, e-posta ve dilerseniz telefon numaranız; " +
+    "siteyi kullanırken manifest içerikleriniz ve etkileşim sayaçları " +
+    "(şans, tebrik, görüntülenme) işlenir.\n\n" +
+    "2. İşleme Amaçları\n" +
+    "Verileriniz; üyeliğinizin oluşturulması ve yönetilmesi, manifestlerinizin " +
+    "duvarda sergilenmesi, kazandığınız hakların tanımlanması, size bildirim " +
+    "e-postaları gönderilmesi (dilerseniz kapatılabilir), sorularınızın " +
+    "yanıtlanması ve hizmetin güvenliğinin sağlanması amaçlarıyla işlenir.\n\n" +
+    "3. Aktarım\n" +
+    "Kişisel verileriniz, yasal zorunluluklar dışında üçüncü kişilerle " +
+    "paylaşılmaz; reklam amacıyla satılmaz. E-posta gönderimi ve barındırma " +
+    "için çalıştığımız hizmet sağlayıcılar yalnızca hizmetin gerektirdiği " +
+    "ölçüde veriye erişir.\n\n" +
+    "4. Saklama Süresi\n" +
+    "Verileriniz üyeliğiniz süresince saklanır. Hesabınızı sildiğinizde " +
+    "hesabınıza bağlı tüm manifestler ve kişisel veriler kalıcı olarak " +
+    "silinir.\n\n" +
+    "5. Haklarınız (KVKK m.11)\n" +
+    "Kişisel verilerinizin işlenip işlenmediğini öğrenme, düzeltilmesini ya " +
+    "da silinmesini talep etme, işlemeye itiraz etme haklarına sahipsiniz. " +
+    "Talepleriniz için bilgi@manifestduvari.com adresine yazabilirsiniz.\n\n" +
+    "Rumuz kullanımı serbesttir; duvarda gerçek kimliğinizin görünmesi " +
+    "zorunlu değildir.",
+  cookies:
+    "Manifest Duvarı'nda deneyiminizi sürdürebilmek için sınırlı sayıda " +
+    "çerez ve benzeri teknoloji (yerel depolama) kullanıyoruz.\n\n" +
+    "1. Zorunlu Çerezler\n" +
+    "Oturumunuzu açık tutan üyelik çerezi ile güvenlik amaçlı çerezler, " +
+    "sitenin çalışması için gereklidir ve kapatılamaz.\n\n" +
+    "2. Tercih ve Sayaç Kayıtları\n" +
+    "Görüntülenme sayaçlarının cihaz başına günde bir kez sayılması, çerez " +
+    "kutusunu kabul ettiğinizin hatırlanması ve arayüz tercihleri için " +
+    "tarayıcınızın yerel depolaması kullanılır. Bu kayıtlar kimliğinizi " +
+    "tespit etmek için kullanılmaz.\n\n" +
+    "3. Üçüncü Taraf Çerezleri\n" +
+    "Google ile giriş özelliğini kullanırsanız Google kendi çerezlerini " +
+    "yerleştirebilir; bu çerezler Google'ın politikalarına tabidir.\n\n" +
+    "Çerezleri tarayıcı ayarlarınızdan silebilir ya da engelleyebilirsiniz; " +
+    "ancak zorunlu çerezler engellendiğinde üyelik özellikleri çalışmayabilir. " +
+    "Sorularınız için bilgi@manifestduvari.com adresine yazabilirsiniz.",
+  terms:
+    "Manifest Duvarı'nı (manifestduvari.com) kullanarak aşağıdaki koşulları " +
+    "kabul etmiş sayılırsınız.\n\n" +
+    "1. Hizmet\n" +
+    "Manifest Duvarı; üyelerin hayallerini ve hedeflerini zarf biçiminde " +
+    "herkese açık bir duvarda sergilediği, ziyaretçilerin bu manifestlere " +
+    "şans dileyebildiği ücretsiz bir platformdur.\n\n" +
+    "2. Üyelik\n" +
+    "Üyelik e-posta doğrulaması ya da Google hesabıyla oluşturulur. " +
+    "Hesabınızın güvenliğinden siz sorumlusunuz. Her üyenin yıl başına 3 " +
+    "manifest hakkı vardır.\n\n" +
+    "3. İçerik Kuralları\n" +
+    "Manifestlerde hakaret, nefret söylemi, şiddet, müstehcenlik, reklam ve " +
+    "başkalarına ait kişisel veri paylaşımı yasaktır. İçerikler düzenli " +
+    "olarak denetlenir; kurallara aykırı içerik yayından kaldırılabilir ve " +
+    "sahibine bilgi verilir. Yazdığınız içeriğin sorumluluğu size aittir.\n\n" +
+    "4. Sergileme\n" +
+    "Duvar herkese açıktır; manifestiniz rumuzunuzla birlikte tüm " +
+    "ziyaretçiler tarafından görülebilir ve paylaşım özelliğiyle sosyal " +
+    "medyada paylaşılabilir. Zarfların duvardaki konumu her gece yeniden " +
+    "dağıtılır; sıralama satılmaz.\n\n" +
+    "5. Sponsorlu İçerik\n" +
+    "Duvarda \"Sponsorlu\" etiketiyle işaretlenmiş marka zarfları yer " +
+    "alabilir; bu zarflar üye manifestlerinden ayrı tutulur.\n\n" +
+    "6. Değişiklikler\n" +
+    "Manifest Duvarı, hizmeti ve bu koşulları güncelleyebilir; önemli " +
+    "değişiklikler sitede duyurulur. Koşullarla ilgili sorularınız için " +
+    "bilgi@manifestduvari.com adresine ulaşabilirsiniz.",
+  cookieBanner:
+    "Deneyimini iyileştirmek için zorunlu çerezler ve yerel depolama " +
+    "kullanıyoruz. Siteyi kullanmaya devam ederek Çerez Politikamızı kabul " +
+    "etmiş olursun.",
+};
+
+export async function getLegal(p: Pool): Promise<LegalSettings> {
+  return { ...DEFAULT_LEGAL, ...(await getSetting(p, "legal", {})) };
+}
+
 // Otomatik bildirim anahtarları — admin panelin Bildirimler sekmesinden
 // yönetilir; kapatılan bildirim maili sunucu tarafında hiç gönderilmez
 export type NotifySettings = {
