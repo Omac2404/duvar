@@ -39,6 +39,11 @@ import {
   type WallMeta,
 } from "./lib/api";
 
+// Site Ağustos 2026'da yayına çıktı — lansman yılında önceki ayların
+// filtrede görünmesi anlamsız olur (o aylara ait manifest olamaz)
+const LAUNCH_YEAR = 2026;
+const LAUNCH_MONTH = 8;
+
 const MONTHS_TR = [
   "Ocak",
   "Şubat",
@@ -2544,7 +2549,13 @@ export default function Home() {
           <span className="mx-2 h-5 w-px shrink-0 bg-neutral-200" />
           <select
             value={fYear}
-            onChange={(e) => setFYear(Number(e.target.value))}
+            onChange={(e) => {
+              const y = Number(e.target.value);
+              setFYear(y);
+              // 2026'ya dönüldüyse Ağustos öncesi ay seçimi geçersizleşir
+              if (y === LAUNCH_YEAR && fMonth && fMonth < LAUNCH_MONTH)
+                setFMonth(0);
+            }}
             className="cursor-pointer bg-transparent py-1 text-sm text-neutral-600 outline-none"
             aria-label="Yıl filtresi"
           >
@@ -2563,11 +2574,14 @@ export default function Home() {
             aria-label="Ay filtresi"
           >
             <option value={0}>Tüm aylar</option>
-            {MONTHS_TR.map((m, i) => (
-              <option key={m} value={i + 1}>
-                {m}
-              </option>
-            ))}
+            {MONTHS_TR.map((m, i) =>
+              // Lansman yılında (2026) Ağustos öncesi aylar listelenmez
+              fYear === LAUNCH_YEAR && i + 1 < LAUNCH_MONTH ? null : (
+                <option key={m} value={i + 1}>
+                  {m}
+                </option>
+              ),
+            )}
           </select>
           {/* Seçime uyan manifest sayısı — filtrelerin hemen altında */}
           <span className="absolute right-2 top-[calc(100%+8px)] whitespace-nowrap rounded-full bg-white/90 px-3 py-1 text-[11px] font-medium text-neutral-500 shadow-sm backdrop-blur">
