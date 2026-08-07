@@ -69,7 +69,7 @@ export default function ContactPage() {
 
         {sent ? (
           <div className="mt-8 rounded-2xl bg-white p-8 text-center shadow-sm">
-            <p className="text-4xl">💌</p>
+            <p className="text-4xl">✉️</p>
             <p className="mt-3 text-lg font-bold text-neutral-800">
               Mesajın bize ulaştı!
             </p>
