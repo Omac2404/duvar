@@ -48,7 +48,7 @@ export default function SiteHeader({
           href={insta.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="absolute left-6 flex items-center gap-2 text-xs font-semibold text-neutral-500 transition-colors hover:text-[#d62976] max-[900px]:hidden md:left-12 xl:left-20"
+          className="absolute left-8 flex items-center gap-2 text-xs font-semibold text-[#d62976] transition-opacity hover:opacity-75 max-[900px]:hidden md:left-20 xl:left-32"
         >
           <InstagramIcon />
           {insta.text || "bizi instagramda takip et"}
@@ -66,7 +66,7 @@ export default function SiteHeader({
       </a>
 
       {/* Sağ: sayfa linkleri + üyelik durumu */}
-      <nav className="absolute right-3 flex items-center gap-2 md:right-12 xl:right-20">
+      <nav className="absolute right-3 flex items-center gap-2 md:right-20 xl:right-32">
         <a
           href="/merak-edilenler"
           className="rounded-full px-2.5 py-1.5 text-xs font-semibold text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-800 max-[640px]:hidden"
