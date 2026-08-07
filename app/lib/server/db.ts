@@ -114,6 +114,20 @@ CREATE TABLE IF NOT EXISTS settings (
   value JSONB NOT NULL
 );
 
+-- Sponsorlu zarf kampanyaları — admin panelin Reklam sekmesinden yönetilir.
+-- Görünüm/mektup ayrıntıları config JSONB'de (revizyonlarda şema değişmesin)
+CREATE TABLE IF NOT EXISTS sponsors (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  start_ts BIGINT,
+  end_ts BIGINT,
+  freq INT NOT NULL DEFAULT 50,
+  logo TEXT NOT NULL DEFAULT '',
+  config JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Saatlik yapay zeka denetimi: her koşu bir zaman penceresini tarar
 CREATE TABLE IF NOT EXISTS moderation_runs (
   id SERIAL PRIMARY KEY,
@@ -235,6 +249,43 @@ async function seed(p: Pool) {
   }
 }
 
+// İlk kurulumda eski duvardaki Petimemama zarfı örnek kampanya olarak
+// tohumlanır; admin silerse bir daha gelmez (sponsorSeeded bayrağı)
+async function seedSponsors(p: Pool) {
+  const flag = await p.query(
+    "SELECT 1 FROM settings WHERE key = 'sponsorSeeded'",
+  );
+  if (flag.rows.length > 0) return;
+  await p.query(
+    `INSERT INTO sponsors (name, active, freq, logo, config)
+     VALUES ('Petimemama', TRUE, 50, '/petimemama.png', $1)`,
+    [
+      JSON.stringify({
+        label: "Sponsorlu",
+        labelBg: "#f97316",
+        labelColor: "#ffffff",
+        subText: "Sürpriz",
+        subColor: "#f97316",
+        bodyColor: "#ffffff",
+        bodyColor2: "#f1e8ff",
+        flapColor: "#7c4ad0",
+        flapColor2: "#4a2385",
+        gradient: "diagonal",
+        gloss: true,
+        letter:
+          "Petimemama'dan manifest duvarına özel bir sürpriz! Bu zarfa denk " +
+          "gelen şanslı ziyaretçilere minik dostlarının mamalarında geçerli " +
+          "özel bir hediye kodu bırakıyoruz. Manifestlerine şans, patili " +
+          "dostlarına afiyet olsun! 🐾",
+        coupon: "PETI-SURPRIZ",
+        linkUrl: "https://www.petimemama.com",
+        linkLabel: "Petimemama'yı keşfet",
+      }),
+    ],
+  );
+  await setSetting(p, "sponsorSeeded", true);
+}
+
 // Şema + seed süreç başına bir kez koşar; tüm route'lar bunu bekler
 export async function getDb(): Promise<Pool> {
   const p = pool();
@@ -242,6 +293,7 @@ export async function getDb(): Promise<Pool> {
     g.mwInit = (async () => {
       await p.query(SCHEMA);
       await seed(p);
+      await seedSponsors(p);
     })();
   }
   await g.mwInit;

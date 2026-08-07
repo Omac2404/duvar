@@ -15,7 +15,11 @@ import {
   type MemberManifest,
   type User,
 } from "../lib/auth";
-import { type Report } from "../lib/wallData";
+import {
+  sponsorColor,
+  type Report,
+  type SponsorGradient,
+} from "../lib/wallData";
 import { sendTestMail, smtpReady, type MailConfig } from "../lib/mail";
 import {
   adminAddLuck,
@@ -31,13 +35,17 @@ import {
   adminModeration,
   adminModerationDecide,
   adminModerationRun,
+  adminDeleteSponsor,
   adminRemoveReport,
   adminReports,
   adminResetMembers,
   adminSaveSettings,
+  adminSaveSponsor,
   adminSaveUser,
   adminSettings,
+  adminSponsors,
   adminUsers,
+  type SponsorCampaign,
 } from "../lib/api";
 import {
   MOD_CATEGORIES,
@@ -175,6 +183,208 @@ function pendingRewards(m: MemberManifest): string[] {
   return p;
 }
 
+// ── Reklam sekmesi yardımcıları ──────────────────────────────────────────
+
+const BLANK_SPONSOR: SponsorCampaign = {
+  id: 0,
+  brand: "",
+  label: "Sponsorlu",
+  labelBg: "#f97316",
+  labelColor: "#ffffff",
+  subText: "Sürpriz",
+  subColor: "#5b2d9c",
+  bodyColor: "#ffffff",
+  bodyColor2: "",
+  flapColor: "#5b2d9c",
+  flapColor2: "",
+  gradient: "diagonal",
+  gloss: true,
+  letter: "",
+  coupon: "",
+  linkUrl: "",
+  linkLabel: "",
+  logo: "",
+  rawLogo: "",
+  active: true,
+  startTs: null,
+  endTs: null,
+  freq: 50,
+};
+
+// ms ↔ datetime-local ("2026-08-07T14:30") çevirimleri — yerel saatte
+function tsToLocal(ts: number | null): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(
+    d.getHours(),
+  )}:${p(d.getMinutes())}`;
+}
+
+function localToTs(s: string): number | null {
+  if (!s) return null;
+  const t = new Date(s).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+// Kampanyanın yayın durumu — liste rozetinde gösterilir
+function sponsorStatus(c: SponsorCampaign): {
+  label: string;
+  tone: "emerald" | "neutral" | "sky" | "red";
+} {
+  if (!c.active) return { label: "Pasif", tone: "neutral" };
+  const now = Date.now();
+  if (c.startTs && c.startTs > now) return { label: "Planlandı", tone: "sky" };
+  if (c.endTs && c.endTs < now) return { label: "Süresi doldu", tone: "red" };
+  return { label: "Yayında", tone: "emerald" };
+}
+
+// Renk alanı — renk seçici + elle hex girişi birlikte, ikisi senkron
+function ColorField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const valid = /^#[0-9a-fA-F]{6}$/.test(value);
+  return (
+    <label className="flex items-center gap-2 text-xs font-medium text-neutral-600">
+      <input
+        type="color"
+        value={valid ? value : "#ffffff"}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-8 w-10 shrink-0 cursor-pointer rounded border border-neutral-200 bg-white p-0.5"
+      />
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value.trim())}
+        placeholder="#rrggbb"
+        spellCheck={false}
+        className={`w-[84px] rounded-lg border bg-white px-2 py-1.5 font-mono text-xs text-neutral-700 outline-none transition-colors focus:border-amber-400 ${
+          value && !valid ? "border-red-300" : "border-neutral-200"
+        }`}
+      />
+      {label}
+    </label>
+  );
+}
+
+// Duvardaki zarfın birebir küçüğü — düzenleyici canlı önizlemesi
+function SponsorEnvelopePreview({
+  c,
+  w = 210,
+}: {
+  c: SponsorCampaign;
+  w?: number;
+}) {
+  const col = sponsorColor(c);
+  const logo = c.rawLogo || c.logo;
+  const fs = w / 172;
+  return (
+    <div
+      className="relative aspect-[4/3] shrink-0 rounded-[3px] shadow-[0_4px_14px_rgba(0,0,0,0.25)]"
+      style={{
+        width: w,
+        ...(col.bodyBg
+          ? { background: col.bodyBg }
+          : { backgroundColor: col.base }),
+      }}
+    >
+      <span
+        className="absolute inset-x-0 top-0 h-[56%]"
+        style={{
+          clipPath: "polygon(0 0, 100% 0, 50% 100%)",
+          ...(col.flapBg
+            ? { background: col.flapBg }
+            : { backgroundColor: col.dark }),
+        }}
+      />
+      {col.gloss && (
+        <span
+          className="pointer-events-none absolute inset-0 rounded-[3px]"
+          style={{
+            background:
+              "linear-gradient(115deg, rgba(255,255,255,0.25) 8%, rgba(255,255,255,0.06) 30%, transparent 46%)",
+          }}
+        />
+      )}
+      <span
+        className="absolute left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full font-bold uppercase shadow-md"
+        style={{
+          top: "44%",
+          rotate: "-4deg",
+          fontSize: 8.5 * fs,
+          letterSpacing: "0.12em",
+          padding: `${2.5 * fs}px ${8 * fs}px`,
+          backgroundColor: c.labelBg,
+          color: c.labelColor,
+        }}
+      >
+        {c.label || "Sponsorlu"}
+      </span>
+      {logo && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logo}
+          alt={c.brand}
+          className="pointer-events-none absolute left-1/2 top-[71%] max-h-[34%] w-[62%] -translate-x-1/2 -translate-y-1/2 object-contain"
+        />
+      )}
+      <span
+        className="absolute inset-x-0 bottom-[4%] truncate px-1 text-center font-hand font-semibold leading-none"
+        style={{ color: c.subColor, fontSize: Math.max(13, 18 * fs) }}
+      >
+        {c.subText}
+      </span>
+    </div>
+  );
+}
+
+// Zarftan çıkan mektubun önizlemesi — duvar popup'ındaki düzenin küçüğü
+function SponsorLetterPreview({ c }: { c: SponsorCampaign }) {
+  const logo = c.rawLogo || c.logo;
+  return (
+    <div className="rounded-[4px] border border-neutral-200 bg-[#fffdf5] px-5 py-4">
+      {logo ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={logo} alt={c.brand} className="h-8 object-contain" />
+      ) : (
+        <p className="text-sm font-bold text-neutral-800">
+          {c.brand || "Marka"}
+        </p>
+      )}
+      <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.2em] text-neutral-400">
+        {c.label || "Sponsorlu"}
+        {c.subText ? ` • ${c.subText}` : ""}
+      </p>
+      <p className="mt-3 whitespace-pre-wrap text-[13px] leading-relaxed text-neutral-700">
+        {c.letter || "Mektup metni burada görünecek…"}
+      </p>
+      {c.coupon && (
+        <div className="mt-3 rounded-xl border-2 border-dashed border-neutral-300 bg-neutral-50 px-4 py-2">
+          <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            Hediye kodu
+          </p>
+          <p className="font-mono text-[14px] font-bold tracking-wider text-neutral-800">
+            {c.coupon}
+          </p>
+        </div>
+      )}
+      {c.linkUrl && (
+        <span
+          className="mt-3 block rounded-xl px-4 py-2 text-center text-[13px] font-bold text-white shadow-sm"
+          style={{ backgroundColor: c.labelBg }}
+        >
+          {c.linkLabel || c.brand || "Siteye git"}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [ready, setReady] = useState(false);
@@ -183,7 +393,7 @@ export default function AdminPage() {
   const [adminPass, setAdminPass] = useState("");
   const [adminErr, setAdminErr] = useState("");
   const [tab, setTab] = useState<
-    "overview" | "members" | "manifests" | "reports" | "mail"
+    "overview" | "members" | "manifests" | "reports" | "sponsors" | "mail"
   >("overview");
 
   // Ziyaretçi bildirimleri (şikâyetler) — duvar popup'larından gelir
@@ -198,6 +408,13 @@ export default function AdminPage() {
   // Reklam alanları + test modu bayrakları (duvar sayfası bunları okur)
   const [ads, setAds] = useState(false);
   const [testMode, setTestMode] = useState(false);
+
+  // Sponsor kampanyaları (Reklam sekmesi) — düzenleyici + liste
+  const [sponsors, setSponsors] = useState<SponsorCampaign[]>([]);
+  const [spEdit, setSpEdit] = useState<SponsorCampaign | null>(null);
+  const [spBusy, setSpBusy] = useState(false);
+  const [spErr, setSpErr] = useState("");
+  const [spDelId, setSpDelId] = useState<number | null>(null);
 
   // Arama alanları — üyeler (isim/e-posta) ve üye manifestleri (kod/rumuz)
   const [mSearch, setMSearch] = useState("");
@@ -259,10 +476,12 @@ export default function AdminPage() {
       adminReports(),
       adminSettings(),
       adminModeration(),
-    ]).then(([u, r, s, m]) => {
+      adminSponsors(),
+    ]).then(([u, r, s, m, sp]) => {
       setUsers(u);
       setReports(r);
       setModRuns(m);
+      setSponsors(sp);
       if (s) {
         setAds(s.ads);
         setTestMode(s.testMode);
@@ -289,6 +508,53 @@ export default function AdminPage() {
 
   function reload() {
     adminUsers().then(setUsers);
+  }
+
+  // ── Sponsor kampanyaları ───────────────────────────────────────────────
+
+  function patchSp(p: Partial<SponsorCampaign>) {
+    setSpErr("");
+    setSpEdit((e) => (e ? { ...e, ...p } : e));
+  }
+
+  // Logo dosyası → küçültülmüş PNG data URL (en fazla 600px genişlik)
+  function onLogoFile(file: File) {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const scale = Math.min(1, 600 / img.width);
+      const cv = document.createElement("canvas");
+      cv.width = Math.max(1, Math.round(img.width * scale));
+      cv.height = Math.max(1, Math.round(img.height * scale));
+      cv.getContext("2d")!.drawImage(img, 0, 0, cv.width, cv.height);
+      patchSp({ rawLogo: cv.toDataURL("image/png") });
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      setSpErr("Görsel okunamadı — PNG/JPG/SVG deneyin.");
+    };
+    img.src = url;
+  }
+
+  async function saveSponsor() {
+    if (!spEdit) return;
+    if (!spEdit.brand.trim()) return setSpErr("Marka adı gerekli.");
+    if (!spEdit.freq || spEdit.freq < 2)
+      return setSpErr("Sıklık en az 2 olmalı (her 2 zarfta 1).");
+    setSpBusy(true);
+    const r = await adminSaveSponsor(spEdit).catch(() => null);
+    setSpBusy(false);
+    if (!r?.ok) return setSpErr(r?.error ?? "Kaydedilemedi.");
+    setSponsors(await adminSponsors());
+    setSpEdit(null);
+  }
+
+  async function deleteSponsor(id: number) {
+    await adminDeleteSponsor(id).catch(() => null);
+    setSpDelId(null);
+    if (spEdit?.id === id) setSpEdit(null);
+    setSponsors(await adminSponsors());
   }
 
   // ── Saatlik AI kontrolü ────────────────────────────────────────────────
@@ -589,6 +855,7 @@ export default function AdminPage() {
     { key: "members", label: "Üyeler" },
     { key: "manifests", label: "Manifestler" },
     { key: "reports", label: "Bildirilenler" },
+    { key: "sponsors", label: "Reklam" },
     { key: "mail", label: "Ayarlar" },
   ] as const;
 
@@ -1385,6 +1652,430 @@ export default function AdminPage() {
                     ))}
                   </tbody>
                 </table>
+              </section>
+            )}
+          </div>
+        )}
+
+        {/* ── Reklam: sponsorlu zarf kampanyaları ── */}
+        {tab === "sponsors" && (
+          <div className="mt-5 space-y-5">
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-bold text-neutral-700">
+                    📣 Sponsorlu Zarf Kampanyaları
+                  </h2>
+                  <p className="mt-1 text-xs text-neutral-400">
+                    Marka zarfları duvardaki zarfların arasına, seçtiğin
+                    sıklıkla serpiştirilir; normal zarflardan ~%35 büyük
+                    görünür. Konumlar her gece 02:00&apos;da yeniden dağılır.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSpErr("");
+                    setSpEdit({ ...BLANK_SPONSOR });
+                  }}
+                  className="cursor-pointer rounded-xl bg-neutral-800 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-neutral-700"
+                >
+                  + Yeni Kampanya
+                </button>
+              </div>
+
+              {sponsors.length === 0 ? (
+                <p className="mt-4 rounded-xl bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-400">
+                  Henüz kampanya yok — &quot;Yeni Kampanya&quot; ile ilk marka
+                  zarfını oluştur.
+                </p>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {sponsors.map((c) => {
+                    const st = sponsorStatus(c);
+                    return (
+                      <div
+                        key={c.id}
+                        className="flex flex-wrap items-center gap-4 rounded-xl bg-neutral-50 p-3"
+                      >
+                        <SponsorEnvelopePreview c={c} w={104} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-bold text-neutral-800">
+                              {c.brand}
+                            </p>
+                            <Chip tone={st.tone}>{st.label}</Chip>
+                            <Chip tone="neutral">
+                              her {c.freq.toLocaleString("tr-TR")} zarfta 1
+                            </Chip>
+                          </div>
+                          <p className="mt-1 text-xs text-neutral-400">
+                            {c.startTs
+                              ? `${new Date(c.startTs).toLocaleString("tr-TR", {
+                                  dateStyle: "medium",
+                                  timeStyle: "short",
+                                })} →`
+                              : "Hemen →"}{" "}
+                            {c.endTs
+                              ? new Date(c.endTs).toLocaleString("tr-TR", {
+                                  dateStyle: "medium",
+                                  timeStyle: "short",
+                                })
+                              : "süresiz"}
+                            {c.coupon && ` · Kod: ${c.coupon}`}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSpErr("");
+                              setSpDelId(null);
+                              setSpEdit({ ...c });
+                            }}
+                            className="cursor-pointer rounded-full border border-neutral-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-neutral-600 transition-colors hover:border-neutral-400"
+                          >
+                            Düzenle
+                          </button>
+                          {spDelId === c.id ? (
+                            <button
+                              type="button"
+                              onClick={() => void deleteSponsor(c.id)}
+                              className="cursor-pointer rounded-full bg-red-500 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-600"
+                            >
+                              Emin misin?
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setSpDelId(c.id)}
+                              className="cursor-pointer rounded-full border border-neutral-200 bg-white px-3.5 py-1.5 text-xs font-medium text-neutral-500 transition-colors hover:border-red-300 hover:text-red-500"
+                            >
+                              Sil
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {/* Düzenleyici — canlı önizlemeli */}
+            {spEdit && (
+              <section className="rounded-2xl bg-white p-5 shadow-sm">
+                <h2 className="text-sm font-bold text-neutral-700">
+                  {spEdit.id > 0
+                    ? `✏️ ${spEdit.brand} kampanyasını düzenle`
+                    : "✨ Yeni kampanya"}
+                </h2>
+                <div className="mt-4 grid gap-6 lg:grid-cols-[1fr_280px]">
+                  <div className="space-y-5">
+                    {/* Genel */}
+                    <div className="rounded-xl bg-neutral-50 p-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+                        Genel
+                      </p>
+                      <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-medium text-neutral-500">
+                            Marka adı
+                          </span>
+                          <input
+                            className={inputCls}
+                            value={spEdit.brand}
+                            onChange={(e) => patchSp({ brand: e.target.value })}
+                            placeholder="Petimemama"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-medium text-neutral-500">
+                            Sıklık — her kaç zarfta 1?
+                          </span>
+                          <input
+                            type="number"
+                            min={2}
+                            className={inputCls}
+                            value={spEdit.freq}
+                            onChange={(e) =>
+                              patchSp({ freq: Math.floor(Number(e.target.value)) })
+                            }
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-medium text-neutral-500">
+                            Yayın başlangıcı (boş: hemen)
+                          </span>
+                          <input
+                            type="datetime-local"
+                            className={inputCls}
+                            value={tsToLocal(spEdit.startTs)}
+                            onChange={(e) =>
+                              patchSp({ startTs: localToTs(e.target.value) })
+                            }
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-medium text-neutral-500">
+                            Yayın bitişi (boş: süresiz)
+                          </span>
+                          <input
+                            type="datetime-local"
+                            className={inputCls}
+                            value={tsToLocal(spEdit.endTs)}
+                            onChange={(e) =>
+                              patchSp({ endTs: localToTs(e.target.value) })
+                            }
+                          />
+                        </label>
+                      </div>
+                      <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm font-medium text-neutral-600">
+                        <input
+                          type="checkbox"
+                          checked={spEdit.active}
+                          onChange={(e) => patchSp({ active: e.target.checked })}
+                          className="h-4 w-4 accent-emerald-500"
+                        />
+                        Kampanya aktif (tarih penceresiyle birlikte değerlendirilir)
+                      </label>
+                    </div>
+
+                    {/* Zarf görünümü */}
+                    <div className="rounded-xl bg-neutral-50 p-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+                        Zarf görünümü
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-3">
+                        <ColorField
+                          label="Zarf içi (gövde)"
+                          value={spEdit.bodyColor}
+                          onChange={(v) => patchSp({ bodyColor: v })}
+                        />
+                        <ColorField
+                          label="Kapak (dış)"
+                          value={spEdit.flapColor}
+                          onChange={(v) => patchSp({ flapColor: v })}
+                        />
+                        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-neutral-600">
+                          <input
+                            type="checkbox"
+                            checked={!!(spEdit.bodyColor2 || spEdit.flapColor2)}
+                            onChange={(e) =>
+                              e.target.checked
+                                ? patchSp({
+                                    bodyColor2: spEdit.bodyColor,
+                                    flapColor2: spEdit.flapColor,
+                                  })
+                                : patchSp({ bodyColor2: "", flapColor2: "" })
+                            }
+                            className="h-4 w-4 accent-violet-500"
+                          />
+                          Degrade (gradient)
+                        </label>
+                        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-neutral-600">
+                          <input
+                            type="checkbox"
+                            checked={spEdit.gloss}
+                            onChange={(e) => patchSp({ gloss: e.target.checked })}
+                            className="h-4 w-4 accent-violet-500"
+                          />
+                          Parlak yüzey
+                        </label>
+                      </div>
+                      {(spEdit.bodyColor2 || spEdit.flapColor2) && (
+                        <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-3 rounded-lg bg-white px-3 py-2.5">
+                          <ColorField
+                            label="Gövde 2. renk"
+                            value={spEdit.bodyColor2}
+                            onChange={(v) => patchSp({ bodyColor2: v })}
+                          />
+                          <ColorField
+                            label="Kapak 2. renk"
+                            value={spEdit.flapColor2}
+                            onChange={(v) => patchSp({ flapColor2: v })}
+                          />
+                          <label className="flex items-center gap-2 text-xs font-medium text-neutral-600">
+                            Degrade tarzı
+                            <select
+                              value={spEdit.gradient}
+                              onChange={(e) =>
+                                patchSp({
+                                  gradient: e.target.value as SponsorGradient,
+                                })
+                              }
+                              className="cursor-pointer rounded-lg border border-neutral-200 bg-white px-2 py-1.5 text-xs"
+                            >
+                              <option value="linear">Dikey geçiş</option>
+                              <option value="diagonal">Çapraz geçiş</option>
+                              <option value="radial">Dairesel geçiş</option>
+                            </select>
+                          </label>
+                        </div>
+                      )}
+                      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-medium text-neutral-500">
+                            Etiket yazısı
+                          </span>
+                          <input
+                            className={inputCls}
+                            value={spEdit.label}
+                            onChange={(e) => patchSp({ label: e.target.value })}
+                            placeholder="Sponsorlu"
+                          />
+                        </label>
+                        <div className="flex items-end pb-1">
+                          <ColorField
+                            label="Etiket zemini"
+                            value={spEdit.labelBg}
+                            onChange={(v) => patchSp({ labelBg: v })}
+                          />
+                        </div>
+                        <div className="flex items-end pb-1">
+                          <ColorField
+                            label="Etiket yazı rengi"
+                            value={spEdit.labelColor}
+                            onChange={(v) => patchSp({ labelColor: v })}
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                        <label className="block sm:col-span-1">
+                          <span className="mb-1 block text-xs font-medium text-neutral-500">
+                            Logo (PNG/JPG — şeffaf PNG önerilir)
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) onLogoFile(f);
+                            }}
+                            className="block w-full cursor-pointer text-xs text-neutral-500 file:mr-3 file:cursor-pointer file:rounded-full file:border-0 file:bg-neutral-800 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-neutral-700"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-medium text-neutral-500">
+                            Logo altı yazı
+                          </span>
+                          <input
+                            className={inputCls}
+                            value={spEdit.subText}
+                            onChange={(e) => patchSp({ subText: e.target.value })}
+                            placeholder="Sürpriz"
+                          />
+                        </label>
+                        <div className="flex items-end pb-1">
+                          <ColorField
+                            label="Logo altı yazı rengi"
+                            value={spEdit.subColor}
+                            onChange={(v) => patchSp({ subColor: v })}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Mektup içeriği */}
+                    <div className="rounded-xl bg-neutral-50 p-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+                        Zarftan çıkan mektup
+                      </p>
+                      <label className="mt-2 block">
+                        <span className="mb-1 block text-xs font-medium text-neutral-500">
+                          Metin
+                        </span>
+                        <textarea
+                          rows={4}
+                          className={inputCls}
+                          value={spEdit.letter}
+                          onChange={(e) => patchSp({ letter: e.target.value })}
+                          placeholder="Markadan duvara özel mesaj…"
+                        />
+                      </label>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-medium text-neutral-500">
+                            Takip / hediye kodu
+                          </span>
+                          <input
+                            className={inputCls}
+                            value={spEdit.coupon}
+                            onChange={(e) => patchSp({ coupon: e.target.value })}
+                            placeholder="PETI-SURPRIZ"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-medium text-neutral-500">
+                            Link (https://…)
+                          </span>
+                          <input
+                            className={inputCls}
+                            value={spEdit.linkUrl}
+                            onChange={(e) => patchSp({ linkUrl: e.target.value })}
+                            placeholder="https://www.marka.com"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-medium text-neutral-500">
+                            Buton yazısı
+                          </span>
+                          <input
+                            className={inputCls}
+                            value={spEdit.linkLabel}
+                            onChange={(e) =>
+                              patchSp({ linkLabel: e.target.value })
+                            }
+                            placeholder="Markayı keşfet"
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    {spErr && (
+                      <p className="rounded-xl bg-red-50 px-4 py-2.5 text-sm font-medium text-red-600">
+                        {spErr}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={spBusy}
+                        onClick={() => void saveSponsor()}
+                        className="cursor-pointer rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-emerald-600 disabled:opacity-50"
+                      >
+                        {spBusy
+                          ? "Kaydediliyor…"
+                          : spEdit.id > 0
+                            ? "Kaydet"
+                            : "Kampanyayı Oluştur"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSpEdit(null)}
+                        className="cursor-pointer rounded-xl border border-neutral-200 bg-white px-5 py-2.5 text-sm font-semibold text-neutral-500 transition-colors hover:bg-neutral-50"
+                      >
+                        Vazgeç
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Canlı önizleme */}
+                  <div className="space-y-4">
+                    <div>
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+                        Duvardaki zarf
+                      </p>
+                      <SponsorEnvelopePreview c={spEdit} w={240} />
+                    </div>
+                    <div>
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+                        Zarftan çıkan mektup
+                      </p>
+                      <SponsorLetterPreview c={spEdit} />
+                    </div>
+                  </div>
+                </div>
               </section>
             )}
           </div>

@@ -4,7 +4,13 @@
 
 import { getDb, toClientManifest, type ManifestRow } from "../../../lib/server/db";
 import { validManifestCode } from "../../../lib/server/validate";
-import { filterSql, wallSeed } from "../../../lib/server/wall";
+import {
+  filterSql,
+  plainCount,
+  wallSeed,
+  wallSponsorSlots,
+} from "../../../lib/server/wall";
+import { toDisplayRank } from "../../../lib/server/sponsors";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -38,6 +44,9 @@ export async function GET(req: Request) {
       [...f.params, wallSeed(), m.code],
     );
     rank = r.rows[0].n as number;
+    // Araya giren sponsor zarfları sırayı kaydırır → görüntü uzayına çevir
+    const slots = await wallSponsorSlots(db, await plainCount(db, y, mo));
+    rank = toDisplayRank(rank, slots);
   }
   return Response.json({
     found: true,

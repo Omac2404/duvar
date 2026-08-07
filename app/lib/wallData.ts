@@ -19,6 +19,54 @@ export type Sticker = {
   rotation: number; // deg
 };
 
+// ── Sponsorlu zarf (native reklam) ──────────────────────────────────────
+// Kampanyalar admin panelin Reklam sekmesinden tanımlanır; duvar dilimi
+// uçları aktif kampanyaların zarflarını sıklığına göre araya serpiştirir.
+export type SponsorGradient = "linear" | "diagonal" | "radial";
+
+export type SponsorPub = {
+  id: number;
+  brand: string; // marka adı
+  label: string; // kapaktaki pill (örn. "Sponsorlu")
+  labelBg: string;
+  labelColor: string;
+  subText: string; // logo altı el yazısı (örn. "Sürpriz")
+  subColor: string;
+  bodyColor: string;
+  bodyColor2: string; // boş → düz renk
+  flapColor: string;
+  flapColor2: string; // boş → düz renk
+  gradient: SponsorGradient;
+  gloss: boolean;
+  letter: string; // zarftan çıkan metin
+  coupon: string; // takip/hediye kodu (boş → gösterilmez)
+  linkUrl: string; // buton hedefi (boş → buton yok)
+  linkLabel: string;
+  logo: string; // görsel adresi (/api/sponsors/N/logo ya da doğrudan yol)
+};
+
+export function sponsorGradCss(
+  style: SponsorGradient,
+  c1: string,
+  c2: string,
+): string | undefined {
+  if (!c2) return undefined;
+  if (style === "radial") return `radial-gradient(circle at 30% 25%, ${c1}, ${c2})`;
+  if (style === "diagonal") return `linear-gradient(135deg, ${c1}, ${c2})`;
+  return `linear-gradient(180deg, ${c1}, ${c2})`;
+}
+
+export function sponsorColor(sp: SponsorPub): EnvelopeColor {
+  return {
+    base: sp.bodyColor,
+    dark: sp.flapColor,
+    ink: sp.subColor,
+    bodyBg: sponsorGradCss(sp.gradient, sp.bodyColor, sp.bodyColor2),
+    flapBg: sponsorGradCss(sp.gradient, sp.flapColor, sp.flapColor2),
+    gloss: sp.gloss,
+  };
+}
+
 export type Envelope = {
   id: number;
   name: string;
@@ -40,6 +88,7 @@ export type Envelope = {
   boxed?: boolean; // 250+ şans: manifest hediye kutusunda sergileniyor
   ribbon?: number; // şişe kurdele rengi (üye zarfında seçilen özel renk)
   sponsored?: boolean; // marka zarfı (native reklam)
+  sponsor?: SponsorPub; // sponsorlu zarfın kampanya yükü
   realized?: boolean; // manifest gerçekleşti: şans dondurulur, rozet taşır
   realizedDate?: string; // gerçekleşti olarak işaretlendiği tarih
   ts: number; // eklenme zamanı (timestamp — türetilmiş alanlar için)

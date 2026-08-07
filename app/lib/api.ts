@@ -3,7 +3,7 @@
 // tepkileri, herkese açık ayarlar ve admin panel uçlarıdır.
 
 import type { MemberManifest, User } from "./auth";
-import type { Report, ReportReason } from "./wallData";
+import type { Report, ReportReason, SponsorPub } from "./wallData";
 import type { MailConfig } from "./mail";
 import type { ModProgress, ModRun } from "./moderation";
 
@@ -325,4 +325,33 @@ export function adminSaveSettings(patch: {
 
 export function adminResetMembers() {
   return post<{ ok: boolean }>("/api/admin/reset");
+}
+
+// ── Admin: sponsor kampanyaları (Reklam sekmesi) ─────────────────────────
+
+export type SponsorCampaign = SponsorPub & {
+  active: boolean;
+  startTs: number | null; // yayın başlangıcı (ms) — null: hemen
+  endTs: number | null; // yayın bitişi (ms) — null: süresiz
+  freq: number; // her N zarfta 1 sponsor zarfı
+  rawLogo: string; // data URL ya da statik yol (düzenleyici yükler)
+};
+
+export async function adminSponsors(): Promise<SponsorCampaign[]> {
+  const res = await fetch("/api/admin/sponsors");
+  if (!res.ok) return [];
+  return (await json<{ sponsors: SponsorCampaign[] }>(res)).sponsors;
+}
+
+// id === 0 → yeni kampanya oluşturur
+export function adminSaveSponsor(c: SponsorCampaign) {
+  return post<{ ok: boolean; sponsor?: SponsorCampaign; error?: string }>(
+    c.id > 0 ? `/api/admin/sponsors/${c.id}` : "/api/admin/sponsors",
+    c,
+    c.id > 0 ? "PUT" : "POST",
+  );
+}
+
+export function adminDeleteSponsor(id: number) {
+  return post<{ ok: boolean }>(`/api/admin/sponsors/${id}`, undefined, "DELETE");
 }

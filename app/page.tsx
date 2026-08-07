@@ -23,6 +23,7 @@ import {
   mulberry32,
   REPORT_REASONS,
   SPECIALS,
+  sponsorColor,
   type Envelope,
 } from "./lib/wallData";
 import {
@@ -367,7 +368,8 @@ const EnvelopeCard = memo(function EnvelopeCard({
         width: w,
         left: pos.x - (w - envW) / 2,
         top: pos.y - ((w - envW) * 0.75) / 2,
-        zIndex: highlighted ? 1460 : pos.z,
+        // Sponsor zarfı her zaman komşularının üstünde durur (vurgu hariç)
+        zIndex: highlighted ? 1460 : envelope.sponsored ? 1000 : pos.z,
         visibility: hidden ? "hidden" : undefined,
         // İnen zarfa yer açma / geri dönme — organik esneme
         transform: offset ? `translate(${offset.x}px, ${offset.y}px)` : "none",
@@ -443,27 +445,29 @@ const EnvelopeCard = memo(function EnvelopeCard({
             Gerçekleşti
           </span>
         )}
-        {/* Sponsor zarfı: logo + SPONSORLU etiketi */}
-        {envelope.sponsored && (
+        {/* Sponsor zarfı: kampanya logosu + etiket pill'i */}
+        {envelope.sponsored && envelope.sponsor && (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/petimemama.png"
-              alt="Petimemama"
+              src={envelope.sponsor.logo}
+              alt={envelope.sponsor.brand}
               draggable={false}
-              className="pointer-events-none absolute left-1/2 top-[71%] w-[62%] -translate-x-1/2 -translate-y-1/2 select-none object-contain"
+              className="pointer-events-none absolute left-1/2 top-[71%] max-h-[34%] w-[62%] -translate-x-1/2 -translate-y-1/2 select-none object-contain"
             />
             <span
-              className="absolute left-1/2 -translate-x-1/2 rounded-full bg-[#f97316] font-bold uppercase text-white shadow-md"
+              className="absolute left-1/2 -translate-x-1/2 rounded-full font-bold uppercase shadow-md"
               style={{
                 top: "44%",
                 rotate: "-4deg",
                 fontSize: 8.5 * fs,
                 letterSpacing: "0.12em",
                 padding: `${2.5 * fs}px ${8 * fs}px`,
+                backgroundColor: envelope.sponsor.labelBg,
+                color: envelope.sponsor.labelColor,
               }}
             >
-              Sponsorlu
+              {envelope.sponsor.label}
             </span>
           </>
         )}
@@ -1434,11 +1438,11 @@ function ManifestPopup({
               ref={letterRef}
               className="max-h-[62vh] overflow-y-auto rounded-[4px] bg-[#fffdf5] px-8 py-7 shadow-[0_16px_44px_rgba(0,0,0,0.35)] max-[520px]:px-5 max-[520px]:py-5"
             >
-              {envelope.sponsored ? (
+              {envelope.sponsored && envelope.sponsor ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src="/petimemama.png"
-                  alt="Petimemama"
+                  src={envelope.sponsor.logo}
+                  alt={envelope.sponsor.brand}
                   className="h-9 object-contain"
                 />
               ) : (
@@ -1447,24 +1451,58 @@ function ManifestPopup({
                 </p>
               )}
               <div className="mt-1 flex items-center justify-between">
-                {envelope.sponsored && (
+                {envelope.sponsored && envelope.sponsor && (
                   <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-neutral-400 max-[520px]:text-[9.5px]">
-                    Sponsorlu • Sürpriz
+                    {envelope.sponsor.label}
+                    {envelope.sponsor.subText
+                      ? ` • ${envelope.sponsor.subText}`
+                      : ""}
                   </p>
                 )}
-                <div className="ml-auto flex flex-col items-end">
-                  <span className="text-[9px] font-medium uppercase tracking-[0.2em] text-neutral-400 max-[520px]:text-[8px]">
-                    Zarf kodu
-                  </span>
-                  <p className="flex items-center gap-1.5 font-mono text-[11px] tracking-wider text-neutral-400 max-[520px]:text-[9.5px]">
-                    {envelope.code}
-                    <CopyBtn text={envelope.code} />
-                  </p>
-                </div>
+                {!envelope.sponsored && (
+                  <div className="ml-auto flex flex-col items-end">
+                    <span className="text-[9px] font-medium uppercase tracking-[0.2em] text-neutral-400 max-[520px]:text-[8px]">
+                      Zarf kodu
+                    </span>
+                    <p className="flex items-center gap-1.5 font-mono text-[11px] tracking-wider text-neutral-400 max-[520px]:text-[9.5px]">
+                      {envelope.code}
+                      <CopyBtn text={envelope.code} />
+                    </p>
+                  </div>
+                )}
               </div>
               <p className="mt-4 text-[14px] leading-relaxed text-neutral-700 max-[520px]:text-[13px]">
                 {envelope.manifest}
               </p>
+              {/* Sponsor mektubu: takip kodu kutusu + marka linki */}
+              {envelope.sponsored && envelope.sponsor && (
+                <div className="mt-4 space-y-3">
+                  {envelope.sponsor.coupon && (
+                    <div className="flex items-center justify-between gap-3 rounded-xl border-2 border-dashed border-neutral-300 bg-neutral-50 px-4 py-2.5">
+                      <div>
+                        <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                          Hediye kodu
+                        </p>
+                        <p className="font-mono text-[15px] font-bold tracking-wider text-neutral-800 max-[520px]:text-[13px]">
+                          {envelope.sponsor.coupon}
+                        </p>
+                      </div>
+                      <CopyBtn text={envelope.sponsor.coupon} />
+                    </div>
+                  )}
+                  {envelope.sponsor.linkUrl && (
+                    <a
+                      href={envelope.sponsor.linkUrl}
+                      target="_blank"
+                      rel="noopener noreferrer sponsored"
+                      className="block rounded-xl px-4 py-2.5 text-center text-sm font-bold text-white shadow-md transition-transform hover:scale-[1.02]"
+                      style={{ backgroundColor: envelope.sponsor.labelBg }}
+                    >
+                      {envelope.sponsor.linkLabel || envelope.sponsor.brand}
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1496,12 +1534,13 @@ function ManifestPopup({
             />
           )}
 
-          {/* Eklenme tarihi + görüntülenme — zarf ön yüzü, sol alt */}
+          {/* Eklenme tarihi + görüntülenme — zarf ön yüzü, sol alt.
+              Sponsor zarfında gösterilmez (tarih/görüntülenme verisi yok) */}
           <div
             className="absolute bottom-[16px] left-[22px] z-30 flex flex-col items-start gap-1 text-xs font-medium transition-opacity duration-200 max-[520px]:bottom-[12px] max-[520px]:left-[14px] max-[520px]:gap-0.5"
             style={{
               color: envelope.color.ink,
-              opacity: stage === "open" ? 0.85 : 0,
+              opacity: stage === "open" && !envelope.sponsored ? 0.85 : 0,
               pointerEvents: "none",
             }}
           >
@@ -1819,6 +1858,13 @@ function itemToEnvelope(m: MemberManifest, id: number): Envelope {
   if (m.special != null) {
     env.color = SPECIALS[m.special % SPECIALS.length];
     env.ribbon = m.special;
+  }
+  // Sponsorlu zarf: kampanya yükünden marka renkleri/logosu ile çizilir
+  if (m.sponsored && m.sponsor) {
+    env.sponsored = true;
+    env.sponsor = m.sponsor;
+    env.color = sponsorColor(m.sponsor);
+    env.sticker = undefined;
   }
   if (m.bottled) env.bottled = true;
   if (m.boxed) env.boxed = true;

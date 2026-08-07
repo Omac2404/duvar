@@ -19,6 +19,8 @@ export type MemberManifest = {
   boxed?: boolean; // 250+ şans hakkı: üye onayıyla manifest hediye kutusuna taşınır
   realized: boolean;
   realizedDate?: string;
+  sponsored?: boolean; // duvar diliminde araya giren marka zarfı
+  sponsor?: import("./wallData").SponsorPub;
 };
 
 export type User = {
