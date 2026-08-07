@@ -232,7 +232,15 @@ export default function SiteHeader({
                     ×
                   </button>
                 </div>
+                {/* Sıralama: Hesabım > Merak Ettikleriniz > Bize Yazın >
+                    Instagram — hepsi alt alta */}
                 <nav className="flex-1 space-y-1 px-3 py-3">
+                  <a
+                    href={me ? "/panel" : "/uye"}
+                    className="block rounded-xl px-4 py-3 text-[15px] font-bold text-neutral-900 hover:bg-neutral-50"
+                  >
+                    {me ? "Hesabım" : "Giriş Yap / Üye Ol"}
+                  </a>
                   <a
                     href="/merak-edilenler"
                     className="block rounded-xl px-4 py-3 text-[15px] font-semibold text-neutral-800 hover:bg-neutral-50"
@@ -245,25 +253,18 @@ export default function SiteHeader({
                   >
                     Bize Yazın
                   </a>
-                  <span className="mx-3 my-2 block h-px bg-neutral-100" />
-                  <a
-                    href={me ? "/panel" : "/uye"}
-                    className="block rounded-xl bg-neutral-800 px-4 py-3 text-center text-[15px] font-bold text-white transition-colors hover:bg-neutral-700"
-                  >
-                    {me ? "Hesabım" : "Giriş Yap / Üye Ol"}
-                  </a>
+                  {insta?.url && (
+                    <a
+                      href={insta.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 rounded-xl px-4 py-3 text-[15px] font-semibold text-[#d62976] hover:bg-neutral-50"
+                    >
+                      <InstagramIcon />
+                      {insta.text || "bizi instagramda takip et"}
+                    </a>
+                  )}
                 </nav>
-                {insta?.url && (
-                  <a
-                    href={insta.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 border-t border-neutral-100 px-5 py-4 text-sm font-semibold text-[#d62976]"
-                  >
-                    <InstagramIcon />
-                    {insta.text || "bizi instagramda takip et"}
-                  </a>
-                )}
               </aside>
             </div>,
             document.body,
