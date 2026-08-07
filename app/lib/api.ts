@@ -118,6 +118,7 @@ export type PublicSettings = {
   instagram: InstagramSetting;
   marquee: MarqueeSetting;
   year: number; // etkin yıl (admin yıl simülasyonu doluysa o)
+  month: number; // içinde bulunulan ay (TR, 1-12)
 };
 
 export async function fetchSettings(): Promise<PublicSettings> {
@@ -133,6 +134,7 @@ export async function fetchSettings(): Promise<PublicSettings> {
       instagram: { text: "", url: "" },
       marquee: { text: "", seconds: 36 },
       year: new Date().getFullYear(),
+      month: new Date().getMonth() + 1,
     };
   }
 }

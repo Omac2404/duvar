@@ -20,5 +20,12 @@ export async function GET() {
     instagram: await getInstagram(db),
     marquee: await getMarquee(db),
     year: await effectiveYear(db),
+    // İçinde bulunulan ay (TR) — duvar ay filtresi gelecek ayları gizler
+    month: Number(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: "Europe/Istanbul",
+        month: "numeric",
+      }).format(new Date()),
+    ),
   });
 }

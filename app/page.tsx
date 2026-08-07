@@ -1987,12 +1987,15 @@ export default function Home() {
     text: "",
     seconds: 36,
   });
-  // Etkin yıl (yıl simülasyonu dahil) — duvar varsayılanı bu yılı gösterir
+  // Etkin yıl (yıl simülasyonu dahil) — duvar varsayılanı bu yılı gösterir.
+  // Ay, filtrede gelecek ayların gizlenmesi için kullanılır
   const [nowYear, setNowYear] = useState(2026);
+  const [nowMonth, setNowMonth] = useState(new Date().getMonth() + 1);
   useEffect(() => {
     fetchSettings().then((s) => {
       setAds(s.ads);
       if (s.marquee) setMarquee(s.marquee);
+      if (s.month) setNowMonth(s.month);
       if (s.year) {
         setNowYear(s.year);
         setFYear(s.year);
@@ -2066,6 +2069,32 @@ export default function Home() {
     () => [...new Set([...(meta?.years ?? []), nowYear])].sort((a, b) => a - b),
     [meta, nowYear],
   );
+
+  // Ay filtresi yalnızca GELMİŞ ayları listeler (ss110): lansman yılı 2026
+  // Ağustos'tan, sonraki yıllar Ocak'tan başlar; içinde bulunulan yıl o
+  // aya kadar gider, geçmiş yıllar yıl sonuna kadar. Yeni ay geldikçe
+  // listeye kendiliğinden eklenir. "Tüm yıllar"da yılların birleşimi alınır
+  const monthsOf = useCallback(
+    (y: number): number[] => {
+      const start = y === LAUNCH_YEAR ? LAUNCH_MONTH : 1;
+      const end = y === nowYear ? nowMonth : y < nowYear ? 12 : 0;
+      const list: number[] = [];
+      for (let m = start; m <= end; m++) list.push(m);
+      return list;
+    },
+    [nowYear, nowMonth],
+  );
+  const monthOptions = useMemo(() => {
+    const set = new Set<number>(
+      fYear === 0 ? years.flatMap(monthsOf) : monthsOf(fYear),
+    );
+    return [...set].sort((a, b) => a - b);
+  }, [fYear, years, monthsOf]);
+
+  // Seçili ay listeden düştüyse (yıl değişimi vb.) "Tüm aylar"a dön
+  useEffect(() => {
+    if (fMonth && !monthOptions.includes(fMonth)) setFMonth(0);
+  }, [fMonth, monthOptions]);
 
   // Aktif filtreye uyan manifest sayısı (şişe ve kutular dahil)
   const filteredCount = meta?.total ?? 0;
@@ -2561,13 +2590,7 @@ export default function Home() {
           <span className="mx-2 h-5 w-px shrink-0 bg-neutral-200" />
           <select
             value={fYear}
-            onChange={(e) => {
-              const y = Number(e.target.value);
-              setFYear(y);
-              // 2026'ya dönüldüyse Ağustos öncesi ay seçimi geçersizleşir
-              if (y === LAUNCH_YEAR && fMonth && fMonth < LAUNCH_MONTH)
-                setFMonth(0);
-            }}
+            onChange={(e) => setFYear(Number(e.target.value))}
             className="cursor-pointer bg-transparent py-1 text-sm text-neutral-600 outline-none"
             aria-label="Yıl filtresi"
           >
@@ -2586,14 +2609,11 @@ export default function Home() {
             aria-label="Ay filtresi"
           >
             <option value={0}>Tüm aylar</option>
-            {MONTHS_TR.map((m, i) =>
-              // Lansman yılında (2026) Ağustos öncesi aylar listelenmez
-              fYear === LAUNCH_YEAR && i + 1 < LAUNCH_MONTH ? null : (
-                <option key={m} value={i + 1}>
-                  {m}
-                </option>
-              ),
-            )}
+            {monthOptions.map((m) => (
+              <option key={m} value={m}>
+                {MONTHS_TR[m - 1]}
+              </option>
+            ))}
           </select>
           {/* Seçime uyan manifest sayısı — filtrelerin hemen altında */}
           <span className="absolute right-2 top-[calc(100%+8px)] whitespace-nowrap rounded-full bg-white/90 px-3 py-1 text-[11px] font-medium text-neutral-500 shadow-sm backdrop-blur">
