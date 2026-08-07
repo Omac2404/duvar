@@ -23,6 +23,7 @@ import {
   mulberry32,
   REPORT_REASONS,
   SPECIALS,
+  SPONSOR_FONTS,
   sponsorColor,
   type Envelope,
 } from "./lib/wallData";
@@ -34,6 +35,7 @@ import {
   findWallCode,
   react as apiReact,
   submitReport,
+  trackSponsor,
   type WallMeta,
 } from "./lib/api";
 
@@ -124,7 +126,7 @@ function persistCheer(code: string, delta: number) {
 // aç-kapa yaparak sayaç şişirilemez. Sayılan artışı (0/1) döndürür;
 // üye manifestine kalıcı yazılır (demo zarflarında oturumluk kalır)
 const VIEWED_KEY = "mw_viewed";
-function registerView(code: string): number {
+function registerView(code: string, notify = true): number {
   try {
     const day = new Date().toLocaleDateString("sv-SE"); // YYYY-AA-GG (yerel)
     let rec: { day: string; codes: Record<string, 1> };
@@ -137,7 +139,7 @@ function registerView(code: string): number {
     if (rec.codes[code]) return 0;
     rec.codes[code] = 1;
     localStorage.setItem(VIEWED_KEY, JSON.stringify(rec));
-    apiReact(code, "view"); // üye manifestinde kalıcı; demo zarfında no-op
+    if (notify) apiReact(code, "view"); // üye manifestinde kalıcı; demo no-op
     return 1;
   } catch {
     return 0;
@@ -423,10 +425,16 @@ const EnvelopeCard = memo(function EnvelopeCard({
             }}
           />
         )}
-        {/* Rumuz */}
+        {/* Rumuz — sponsor zarfında logo altı yazı, seçilen fontla */}
         <span
           className="absolute inset-x-0 bottom-[4%] truncate px-1 text-center font-hand leading-none font-semibold"
-          style={{ color: envelope.color.ink, fontSize: Math.max(14.5, 18 * fs) }}
+          style={{
+            color: envelope.color.ink,
+            fontSize: Math.max(14.5, 18 * fs),
+            ...(envelope.sponsored && envelope.sponsor
+              ? { fontFamily: SPONSOR_FONTS[envelope.sponsor.subFont].css }
+              : {}),
+          }}
         >
           {envelope.name}
         </span>
@@ -445,7 +453,8 @@ const EnvelopeCard = memo(function EnvelopeCard({
             Gerçekleşti
           </span>
         )}
-        {/* Sponsor zarfı: kampanya logosu + etiket pill'i */}
+        {/* Sponsor zarfı: kampanya logosu + etiket pill'i (konum/boyut
+            admin panelden ayarlanır) */}
         {envelope.sponsored && envelope.sponsor && (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -453,12 +462,13 @@ const EnvelopeCard = memo(function EnvelopeCard({
               src={envelope.sponsor.logo}
               alt={envelope.sponsor.brand}
               draggable={false}
-              className="pointer-events-none absolute left-1/2 top-[71%] max-h-[34%] w-[62%] -translate-x-1/2 -translate-y-1/2 select-none object-contain"
+              className="pointer-events-none absolute left-1/2 top-[71%] -translate-x-1/2 -translate-y-1/2 select-none object-contain"
+              style={{ width: `${envelope.sponsor.logoW}%` }}
             />
             <span
-              className="absolute left-1/2 -translate-x-1/2 rounded-full font-bold uppercase shadow-md"
+              className="absolute left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full font-bold uppercase shadow-md"
               style={{
-                top: "44%",
+                top: `${envelope.sponsor.labelY}%`,
                 rotate: "-4deg",
                 fontSize: 8.5 * fs,
                 letterSpacing: "0.12em",
@@ -1478,7 +1488,12 @@ function ManifestPopup({
               {envelope.sponsored && envelope.sponsor && (
                 <div className="mt-4 space-y-3">
                   {envelope.sponsor.coupon && (
-                    <div className="flex items-center justify-between gap-3 rounded-xl border-2 border-dashed border-neutral-300 bg-neutral-50 px-4 py-2.5">
+                    <div
+                      className="flex items-center justify-between gap-3 rounded-xl border-2 border-dashed border-neutral-300 bg-neutral-50 px-4 py-2.5"
+                      onClickCapture={() =>
+                        trackSponsor(envelope.sponsor!.id, "coupon")
+                      }
+                    >
                       <div>
                         <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
                           Hediye kodu
@@ -1495,6 +1510,7 @@ function ManifestPopup({
                       href={envelope.sponsor.linkUrl}
                       target="_blank"
                       rel="noopener noreferrer sponsored"
+                      onClick={() => trackSponsor(envelope.sponsor!.id, "link")}
                       className="block rounded-xl px-4 py-2.5 text-center text-sm font-bold text-white shadow-md transition-transform hover:scale-[1.02]"
                       style={{ backgroundColor: envelope.sponsor.labelBg }}
                     >
@@ -1534,13 +1550,13 @@ function ManifestPopup({
             />
           )}
 
-          {/* Eklenme tarihi + görüntülenme — zarf ön yüzü, sol alt.
-              Sponsor zarfında gösterilmez (tarih/görüntülenme verisi yok) */}
+          {/* Eklenme/yayınlanma tarihi + görüntülenme — zarf ön yüzü, sol
+              alt. Sponsor zarfında yalnızca yayınlanma tarihi görünür */}
           <div
             className="absolute bottom-[16px] left-[22px] z-30 flex flex-col items-start gap-1 text-xs font-medium transition-opacity duration-200 max-[520px]:bottom-[12px] max-[520px]:left-[14px] max-[520px]:gap-0.5"
             style={{
               color: envelope.color.ink,
-              opacity: stage === "open" && !envelope.sponsored ? 0.85 : 0,
+              opacity: stage === "open" ? 0.85 : 0,
               pointerEvents: "none",
             }}
           >
@@ -1584,22 +1600,26 @@ function ManifestPopup({
               </svg>
               {envelope.date}
             </span>
-            <span className="h-px w-full bg-current opacity-25" />
-            <span className="flex items-center gap-1.5">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-4 w-4"
-            >
-              <path d="M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-6a2 2 0 0 1 2.4 0l8 6Z" />
-              <path d="m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10" />
-            </svg>
-            {envelope.views.toLocaleString("tr-TR")} kişi zarfı açtı
-            </span>
+            {!envelope.sponsored && (
+              <>
+                <span className="h-px w-full bg-current opacity-25" />
+                <span className="flex items-center gap-1.5">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-4 w-4"
+                  >
+                    <path d="M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-6a2 2 0 0 1 2.4 0l8 6Z" />
+                    <path d="m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10" />
+                  </svg>
+                  {envelope.views.toLocaleString("tr-TR")} kişi zarfı açtı
+                </span>
+              </>
+            )}
             {!envelope.sponsored && (
               <ReportButton
                 code={envelope.code}
@@ -2630,7 +2650,11 @@ export default function Home() {
               offset={displaced.get(env.id)}
               highlighted={highlightId === env.id}
               onOpen={(e, origin) => {
-                e.views += registerView(e.code);
+                // Sponsor: kampanya başına günde 1 açılma sayılır
+                if (e.sponsored && e.sponsor) {
+                  if (registerView(`SP${e.sponsor.id}`, false))
+                    trackSponsor(e.sponsor.id, "view");
+                } else e.views += registerView(e.code);
                 setSelected({ env: e, origin });
               }}
             />

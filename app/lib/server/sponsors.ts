@@ -7,7 +7,8 @@
 
 import type { Pool } from "pg";
 import type { MemberManifest } from "../auth";
-import type { SponsorGradient, SponsorPub } from "../wallData";
+import type { SponsorFont, SponsorGradient, SponsorPub } from "../wallData";
+import { trDate } from "./db";
 
 export type SponsorRow = {
   id: number;
@@ -18,15 +19,22 @@ export type SponsorRow = {
   freq: number;
   logo: string;
   config: Record<string, unknown>;
+  created_at: string | Date;
+  views: number;
+  link_clicks: number;
+  coupon_clicks: number;
 };
 
-// Admin panelin okuduğu/yazdığı tam kampanya biçimi
+// Admin panelin okuduğu/yazdığı tam kampanya biçimi (+ salt okunur metrikler)
 export type SponsorCampaign = SponsorPub & {
   active: boolean;
   startTs: number | null;
   endTs: number | null;
   freq: number;
   rawLogo: string; // data URL ya da statik yol (düzenleyici için)
+  views: number;
+  linkClicks: number;
+  couponClicks: number;
 };
 
 const DEFAULT_CONFIG = {
@@ -35,6 +43,9 @@ const DEFAULT_CONFIG = {
   labelColor: "#ffffff",
   subText: "",
   subColor: "#5b2d9c",
+  subFont: "hand" as SponsorFont,
+  labelY: 44,
+  logoW: 62,
   bodyColor: "#ffffff",
   bodyColor2: "",
   flapColor: "#5b2d9c",
@@ -62,6 +73,9 @@ export function toSponsorPub(r: SponsorRow): SponsorPub {
     labelColor: String(c.labelColor),
     subText: String(c.subText),
     subColor: String(c.subColor),
+    subFont: c.subFont as SponsorFont,
+    labelY: Number(c.labelY),
+    logoW: Number(c.logoW),
     bodyColor: String(c.bodyColor),
     bodyColor2: String(c.bodyColor2),
     flapColor: String(c.flapColor),
@@ -84,6 +98,9 @@ export function toSponsorCampaign(r: SponsorRow): SponsorCampaign {
     endTs: r.end_ts === null ? null : Number(r.end_ts),
     freq: r.freq,
     rawLogo: r.logo,
+    views: r.views,
+    linkClicks: r.link_clicks,
+    couponClicks: r.coupon_clicks,
   };
 }
 
@@ -92,6 +109,10 @@ export function toSponsorCampaign(r: SponsorRow): SponsorCampaign {
 export function parseSponsorBody(body: Record<string, unknown>) {
   const str = (v: unknown, max: number) =>
     typeof v === "string" ? v.slice(0, max) : "";
+  const num = (v: unknown, def: number, lo: number, hi: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : def;
+  };
   const name = str(body.brand ?? body.name, 60).trim();
   if (!name) return { error: "Marka adı gerekli." } as const;
   const freq = Math.floor(Number(body.freq));
@@ -118,6 +139,13 @@ export function parseSponsorBody(body: Record<string, unknown>) {
       labelColor: str(body.labelColor, 32) || "#ffffff",
       subText: str(body.subText, 40),
       subColor: str(body.subColor, 32) || "#5b2d9c",
+      subFont: ["hand", "sans", "serif", "mono"].includes(
+        body.subFont as string,
+      )
+        ? (body.subFont as SponsorFont)
+        : "hand",
+      labelY: num(body.labelY, 44, 5, 85),
+      logoW: num(body.logoW, 62, 15, 95),
       bodyColor: str(body.bodyColor, 32) || "#ffffff",
       bodyColor2: str(body.bodyColor2, 32),
       flapColor: str(body.flapColor, 32) || "#5b2d9c",
@@ -196,15 +224,19 @@ export function toDisplayRank(rank: number, slots: SponsorSlot[]): number {
   return rank + n;
 }
 
-// Sponsor örneği → dilim öğesi (MemberManifest biçiminde sahte kayıt)
+// Sponsor örneği → dilim öğesi (MemberManifest biçiminde sahte kayıt).
+// Tarih = yayınlanma tarihi (başlangıç verilmişse o, yoksa oluşturulma)
 export function sponsorItem(s: SponsorSlot): MemberManifest {
   const pub = toSponsorPub(s.row);
+  const published = s.row.start_ts
+    ? new Date(Number(s.row.start_ts))
+    : new Date(s.row.created_at);
   return {
     code: `SP${s.row.id}-${s.k}`,
     name: pub.subText || pub.brand,
     manifest: pub.letter,
-    date: "",
-    ts: 0,
+    date: trDate(published),
+    ts: published.getTime(),
     luck: 0,
     cheers: 0,
     views: 0,

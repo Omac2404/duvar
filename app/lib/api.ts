@@ -335,7 +335,15 @@ export type SponsorCampaign = SponsorPub & {
   endTs: number | null; // yayın bitişi (ms) — null: süresiz
   freq: number; // her N zarfta 1 sponsor zarfı
   rawLogo: string; // data URL ya da statik yol (düzenleyici yükler)
+  views: number; // metrik: kaç kişi zarfı açtı
+  linkClicks: number; // metrik: kaç kişi link butonuna tıkladı
+  couponClicks: number; // metrik: kaç kişi kodu kopyaladı
 };
+
+// Sponsor metriği — beklenmeden gönderilir (görüntülenme: cihaz/gün 1)
+export function trackSponsor(id: number, type: "view" | "link" | "coupon") {
+  void post(`/api/sponsors/${id}/track`, { type }).catch(() => {});
+}
 
 export async function adminSponsors(): Promise<SponsorCampaign[]> {
   const res = await fetch("/api/admin/sponsors");

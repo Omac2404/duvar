@@ -127,6 +127,10 @@ CREATE TABLE IF NOT EXISTS sponsors (
   config JSONB NOT NULL DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Kampanya metrikleri: zarf açılma / link tıklama / kod kopyalama sayaçları
+ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS views INT NOT NULL DEFAULT 0;
+ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS link_clicks INT NOT NULL DEFAULT 0;
+ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS coupon_clicks INT NOT NULL DEFAULT 0;
 
 -- Saatlik yapay zeka denetimi: her koşu bir zaman penceresini tarar
 CREATE TABLE IF NOT EXISTS moderation_runs (

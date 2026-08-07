@@ -16,8 +16,10 @@ import {
   type User,
 } from "../lib/auth";
 import {
+  SPONSOR_FONTS,
   sponsorColor,
   type Report,
+  type SponsorFont,
   type SponsorGradient,
 } from "../lib/wallData";
 import { sendTestMail, smtpReady, type MailConfig } from "../lib/mail";
@@ -193,6 +195,9 @@ const BLANK_SPONSOR: SponsorCampaign = {
   labelColor: "#ffffff",
   subText: "Sürpriz",
   subColor: "#5b2d9c",
+  subFont: "hand",
+  labelY: 44,
+  logoW: 62,
   bodyColor: "#ffffff",
   bodyColor2: "",
   flapColor: "#5b2d9c",
@@ -209,6 +214,9 @@ const BLANK_SPONSOR: SponsorCampaign = {
   startTs: null,
   endTs: null,
   freq: 50,
+  views: 0,
+  linkClicks: 0,
+  couponClicks: 0,
 };
 
 // ms ↔ datetime-local ("2026-08-07T14:30") çevirimleri — yerel saatte
@@ -314,7 +322,7 @@ function SponsorEnvelopePreview({
       <span
         className="absolute left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full font-bold uppercase shadow-md"
         style={{
-          top: "44%",
+          top: `${c.labelY}%`,
           rotate: "-4deg",
           fontSize: 8.5 * fs,
           letterSpacing: "0.12em",
@@ -330,12 +338,17 @@ function SponsorEnvelopePreview({
         <img
           src={logo}
           alt={c.brand}
-          className="pointer-events-none absolute left-1/2 top-[71%] max-h-[34%] w-[62%] -translate-x-1/2 -translate-y-1/2 object-contain"
+          className="pointer-events-none absolute left-1/2 top-[71%] -translate-x-1/2 -translate-y-1/2 object-contain"
+          style={{ width: `${c.logoW}%` }}
         />
       )}
       <span
         className="absolute inset-x-0 bottom-[4%] truncate px-1 text-center font-hand font-semibold leading-none"
-        style={{ color: c.subColor, fontSize: Math.max(13, 18 * fs) }}
+        style={{
+          color: c.subColor,
+          fontSize: Math.max(13, 18 * fs),
+          fontFamily: SPONSOR_FONTS[c.subFont].css,
+        }}
       >
         {c.subText}
       </span>
@@ -1724,6 +1737,30 @@ export default function AdminPage() {
                               : "süresiz"}
                             {c.coupon && ` · Kod: ${c.coupon}`}
                           </p>
+                          {/* Metrikler: açılma / link / kod (cihaz başına
+                              günde 1 açılma sayılır) */}
+                          <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-neutral-500">
+                            <span title="Kaç kişi zarfı açtı">
+                              ✉️ {c.views.toLocaleString("tr-TR")} açılma
+                            </span>
+                            <span title="Kaç kişi link butonuna tıkladı">
+                              🔗 {c.linkClicks.toLocaleString("tr-TR")} link
+                              tıklaması
+                            </span>
+                            <span title="Kaç kişi hediye kodunu kopyaladı">
+                              🎟️ {c.couponClicks.toLocaleString("tr-TR")} kod
+                              kopyalama
+                            </span>
+                            {c.views > 0 && (
+                              <span
+                                title="Link tıklama / açılma oranı"
+                                className="text-emerald-600"
+                              >
+                                %{Math.round((c.linkClicks / c.views) * 100)}{" "}
+                                dönüşüm
+                              </span>
+                            )}
+                          </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <button
@@ -1925,6 +1962,21 @@ export default function AdminPage() {
                             placeholder="Sponsorlu"
                           />
                         </label>
+                        <label className="block sm:col-span-2">
+                          <span className="mb-1 block text-xs font-medium text-neutral-500">
+                            Etiket yüksekliği — üstten %{spEdit.labelY}
+                          </span>
+                          <input
+                            type="range"
+                            min={5}
+                            max={85}
+                            value={spEdit.labelY}
+                            onChange={(e) =>
+                              patchSp({ labelY: Number(e.target.value) })
+                            }
+                            className="mt-2.5 w-full cursor-pointer accent-violet-500"
+                          />
+                        </label>
                         <div className="flex items-end pb-1">
                           <ColorField
                             label="Etiket zemini"
@@ -1955,6 +2007,21 @@ export default function AdminPage() {
                             className="block w-full cursor-pointer text-xs text-neutral-500 file:mr-3 file:cursor-pointer file:rounded-full file:border-0 file:bg-neutral-800 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-neutral-700"
                           />
                         </label>
+                        <label className="block sm:col-span-2">
+                          <span className="mb-1 block text-xs font-medium text-neutral-500">
+                            Logo boyutu — zarf genişliğinin %{spEdit.logoW}&apos;i
+                          </span>
+                          <input
+                            type="range"
+                            min={15}
+                            max={95}
+                            value={spEdit.logoW}
+                            onChange={(e) =>
+                              patchSp({ logoW: Number(e.target.value) })
+                            }
+                            className="mt-2.5 w-full cursor-pointer accent-violet-500"
+                          />
+                        </label>
                         <label className="block">
                           <span className="mb-1 block text-xs font-medium text-neutral-500">
                             Logo altı yazı
@@ -1965,6 +2032,26 @@ export default function AdminPage() {
                             onChange={(e) => patchSp({ subText: e.target.value })}
                             placeholder="Sürpriz"
                           />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-medium text-neutral-500">
+                            Logo altı yazı fontu
+                          </span>
+                          <select
+                            value={spEdit.subFont}
+                            onChange={(e) =>
+                              patchSp({ subFont: e.target.value as SponsorFont })
+                            }
+                            className={`${inputCls} cursor-pointer`}
+                          >
+                            {(
+                              Object.keys(SPONSOR_FONTS) as SponsorFont[]
+                            ).map((f) => (
+                              <option key={f} value={f}>
+                                {SPONSOR_FONTS[f].label}
+                              </option>
+                            ))}
+                          </select>
                         </label>
                         <div className="flex items-end pb-1">
                           <ColorField

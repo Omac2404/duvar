@@ -24,6 +24,16 @@ export type Sticker = {
 // uçları aktif kampanyaların zarflarını sıklığına göre araya serpiştirir.
 export type SponsorGradient = "linear" | "diagonal" | "radial";
 
+// Logo altı yazının font seçenekleri — site fontları + sistem aileleri
+export type SponsorFont = "hand" | "sans" | "serif" | "mono";
+export const SPONSOR_FONTS: Record<SponsorFont, { label: string; css: string }> =
+  {
+    hand: { label: "El yazısı", css: "var(--font-caveat), cursive" },
+    sans: { label: "Modern", css: "var(--font-geist-sans), Arial, sans-serif" },
+    serif: { label: "Klasik", css: "Georgia, 'Times New Roman', serif" },
+    mono: { label: "Daktilo", css: "ui-monospace, Consolas, monospace" },
+  };
+
 export type SponsorPub = {
   id: number;
   brand: string; // marka adı
@@ -32,6 +42,9 @@ export type SponsorPub = {
   labelColor: string;
   subText: string; // logo altı el yazısı (örn. "Sürpriz")
   subColor: string;
+  subFont: SponsorFont; // logo altı yazının fontu
+  labelY: number; // etiket pill'inin dikey konumu (üstten %)
+  logoW: number; // logo genişliği (zarf genişliğinin %'si)
   bodyColor: string;
   bodyColor2: string; // boş → düz renk
   flapColor: string;
