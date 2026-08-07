@@ -132,6 +132,17 @@ ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS views INT NOT NULL DEFAULT 0;
 ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS link_clicks INT NOT NULL DEFAULT 0;
 ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS coupon_clicks INT NOT NULL DEFAULT 0;
 
+-- Bize Ulaşın formundan gelen mesajlar — admin panelde Bize Yazılanlar
+CREATE TABLE IF NOT EXISTS contact_messages (
+  id SERIAL PRIMARY KEY,
+  first_name TEXT NOT NULL,
+  last_name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  phone TEXT NOT NULL DEFAULT '',
+  message TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Saatlik yapay zeka denetimi: her koşu bir zaman penceresini tarar
 CREATE TABLE IF NOT EXISTS moderation_runs (
   id SERIAL PRIMARY KEY,

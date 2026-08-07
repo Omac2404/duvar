@@ -105,11 +105,14 @@ export async function findWallCode(
 
 // ── Herkese açık ayarlar ─────────────────────────────────────────────────
 
+export type InstagramSetting = { text: string; url: string };
+
 export type PublicSettings = {
   ads: boolean;
   testMode: boolean;
   googleClientId: string;
   smtpConfigured: boolean;
+  instagram: InstagramSetting;
 };
 
 export async function fetchSettings(): Promise<PublicSettings> {
@@ -117,8 +120,57 @@ export async function fetchSettings(): Promise<PublicSettings> {
     const res = await fetch("/api/settings");
     return await json<PublicSettings>(res);
   } catch {
-    return { ads: false, testMode: false, googleClientId: "", smtpConfigured: false };
+    return {
+      ads: false,
+      testMode: false,
+      googleClientId: "",
+      smtpConfigured: false,
+      instagram: { text: "", url: "" },
+    };
   }
+}
+
+// ── Merak Edilenler (SSS) + Bize Ulaşın ──────────────────────────────────
+
+export type FaqItem = { q: string; a: string };
+
+export async function fetchFaq(): Promise<FaqItem[]> {
+  try {
+    const res = await fetch("/api/faq");
+    return (await json<{ faq: FaqItem[] }>(res)).faq;
+  } catch {
+    return [];
+  }
+}
+
+export function submitContact(c: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  message: string;
+}) {
+  return post<{ ok: boolean; error?: string }>("/api/contact", c);
+}
+
+export type ContactMessage = {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  message: string;
+  ts: number;
+};
+
+export async function adminContactMessages(): Promise<ContactMessage[]> {
+  const res = await fetch("/api/admin/contact");
+  if (!res.ok) return [];
+  return (await json<{ messages: ContactMessage[] }>(res)).messages;
+}
+
+export function adminDeleteContact(id: number) {
+  return post<{ ok: boolean }>(`/api/admin/contact?id=${id}`, undefined, "DELETE");
 }
 
 // ── Bildirimler ──────────────────────────────────────────────────────────
@@ -305,6 +357,8 @@ export type AdminSettings = {
   testMode: boolean;
   aiKey: string;
   aiEnabled: boolean;
+  faq: FaqItem[];
+  instagram: InstagramSetting;
 };
 
 export async function adminSettings(): Promise<AdminSettings | null> {
@@ -319,6 +373,8 @@ export function adminSaveSettings(patch: {
   testMode?: boolean;
   aiKey?: string;
   aiEnabled?: boolean;
+  faq?: FaqItem[];
+  instagram?: InstagramSetting;
 }) {
   return post<{ ok: boolean }>("/api/admin/settings", patch, "PUT");
 }

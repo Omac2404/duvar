@@ -307,3 +307,16 @@ body {
 .bottle-sheen {
   animation: bottle-sheen 3s linear infinite;
 }
+/* Header altındaki kayan bilgi şeridi (duvar sayfası) */
+@keyframes mw-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.mw-marquee {
+  animation: mw-marquee 36s linear infinite;
+}

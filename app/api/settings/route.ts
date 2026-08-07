@@ -1,6 +1,7 @@
 // ── Herkese açık ayarlar — duvar ve üye ekranı okur ──────────────────────
 
 import { getDb, getMailSettings, getSetting } from "../../lib/server/db";
+import { getInstagram } from "../../lib/server/content";
 import { smtpConfigured } from "../../lib/server/mailer";
 
 export async function GET() {
@@ -11,5 +12,6 @@ export async function GET() {
     testMode: await getSetting(db, "testMode", false),
     googleClientId: mail.googleClientId,
     smtpConfigured: await smtpConfigured(db),
+    instagram: await getInstagram(db),
   });
 }

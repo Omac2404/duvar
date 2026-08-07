@@ -7,6 +7,12 @@ import {
   setSetting,
   type MailSettings,
 } from "../../../lib/server/db";
+import {
+  getFaq,
+  getInstagram,
+  type FaqItem,
+  type InstagramSetting,
+} from "../../../lib/server/content";
 import { isAdmin } from "../../../lib/server/session";
 import { bad } from "../../../lib/server/validate";
 
@@ -19,6 +25,8 @@ export async function GET() {
     testMode: await getSetting(db, "testMode", false),
     aiKey: await getSetting(db, "aiKey", ""),
     aiEnabled: await getSetting(db, "aiEnabled", false),
+    faq: await getFaq(db),
+    instagram: await getInstagram(db),
   });
 }
 
@@ -30,6 +38,8 @@ export async function PUT(req: Request) {
     testMode?: boolean;
     aiKey?: string;
     aiEnabled?: boolean;
+    faq?: FaqItem[];
+    instagram?: InstagramSetting;
   };
   const db = await getDb();
   if (body.mail !== undefined) {
@@ -43,5 +53,21 @@ export async function PUT(req: Request) {
     await setSetting(db, "aiKey", String(body.aiKey).trim());
   if (body.aiEnabled !== undefined)
     await setSetting(db, "aiEnabled", !!body.aiEnabled);
+  if (body.faq !== undefined) {
+    if (!Array.isArray(body.faq)) return bad("Geçersiz SSS listesi.");
+    const faq = body.faq
+      .slice(0, 100)
+      .map((f) => ({
+        q: String(f?.q ?? "").slice(0, 300),
+        a: String(f?.a ?? "").slice(0, 3000),
+      }))
+      .filter((f) => f.q.trim() && f.a.trim());
+    await setSetting(db, "faq", faq);
+  }
+  if (body.instagram !== undefined)
+    await setSetting(db, "instagram", {
+      text: String(body.instagram?.text ?? "").slice(0, 60),
+      url: String(body.instagram?.url ?? "").slice(0, 300),
+    });
   return Response.json({ ok: true });
 }

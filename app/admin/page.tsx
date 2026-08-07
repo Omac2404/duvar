@@ -37,6 +37,8 @@ import {
   adminModeration,
   adminModerationDecide,
   adminModerationRun,
+  adminContactMessages,
+  adminDeleteContact,
   adminDeleteSponsor,
   adminRemoveReport,
   adminReports,
@@ -47,6 +49,9 @@ import {
   adminSettings,
   adminSponsors,
   adminUsers,
+  type ContactMessage,
+  type FaqItem,
+  type InstagramSetting,
   type SponsorCampaign,
 } from "../lib/api";
 import {
@@ -408,7 +413,13 @@ export default function AdminPage() {
   const [adminPass, setAdminPass] = useState("");
   const [adminErr, setAdminErr] = useState("");
   const [tab, setTab] = useState<
-    "overview" | "members" | "manifests" | "reports" | "sponsors" | "mail"
+    | "overview"
+    | "members"
+    | "manifests"
+    | "reports"
+    | "sponsors"
+    | "content"
+    | "mail"
   >("overview");
 
   // Ziyaretçi bildirimleri (şikâyetler) — duvar popup'larından gelir
@@ -430,6 +441,16 @@ export default function AdminPage() {
   const [spBusy, setSpBusy] = useState(false);
   const [spErr, setSpErr] = useState("");
   const [spDelId, setSpDelId] = useState<number | null>(null);
+
+  // İçerik sekmesi: SSS editörü + Bize Yazılanlar gelen kutusu
+  const [faq, setFaq] = useState<FaqItem[]>([]);
+  const [faqSaved, setFaqSaved] = useState(false);
+  const [contacts, setContacts] = useState<ContactMessage[]>([]);
+  const [contactOpen, setContactOpen] = useState<number | null>(null);
+
+  // Instagram (Ayarlar) — header'daki davet yazısı ve linki
+  const [insta, setInsta] = useState<InstagramSetting>({ text: "", url: "" });
+  const [instaSaved, setInstaSaved] = useState(false);
 
   // Arama alanları — üyeler (isim/e-posta) ve üye manifestleri (kod/rumuz)
   const [mSearch, setMSearch] = useState("");
@@ -492,17 +513,21 @@ export default function AdminPage() {
       adminSettings(),
       adminModeration(),
       adminSponsors(),
-    ]).then(([u, r, s, m, sp]) => {
+      adminContactMessages(),
+    ]).then(([u, r, s, m, sp, cm]) => {
       setUsers(u);
       setReports(r);
       setModRuns(m);
       setSponsors(sp);
+      setContacts(cm);
       if (s) {
         setAds(s.ads);
         setTestMode(s.testMode);
         setMailCfg(s.mail);
         setAiKey(s.aiKey ?? "");
         setAiEnabled(!!s.aiEnabled);
+        setFaq(s.faq ?? []);
+        setInsta(s.instagram ?? { text: "", url: "" });
       }
       setReady(true);
     });
@@ -879,6 +904,7 @@ export default function AdminPage() {
     { key: "manifests", label: "Manifestler" },
     { key: "reports", label: "Bildirilenler" },
     { key: "sponsors", label: "Reklam" },
+    { key: "content", label: "İçerik" },
     { key: "mail", label: "Ayarlar" },
   ] as const;
 
@@ -2197,9 +2223,292 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* ── İçerik: Merak Edilenler (SSS) + Bize Yazılanlar ── */}
+        {tab === "content" && (
+          <div className="mt-5 space-y-5">
+            {/* SSS editörü */}
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-bold text-neutral-700">
+                    ❓ Merak Edilenler (SSS)
+                  </h2>
+                  <p className="mt-1 text-xs text-neutral-400">
+                    /merak-edilenler sayfasında görünen sorular. Sıralama
+                    buradaki sırayla aynıdır; boş bırakılan satırlar
+                    kaydedilmez.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFaqSaved(false);
+                    setFaq((f) => [...f, { q: "", a: "" }]);
+                  }}
+                  className="cursor-pointer rounded-xl border border-neutral-200 bg-white px-4 py-2 text-xs font-semibold text-neutral-600 transition-colors hover:border-neutral-400"
+                >
+                  + Soru Ekle
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {faq.map((f, i) => (
+                  <div key={i} className="rounded-xl bg-neutral-50 p-3">
+                    <div className="flex items-start gap-2">
+                      <span className="mt-2 w-6 shrink-0 text-center text-xs font-bold text-neutral-400">
+                        {i + 1}
+                      </span>
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <input
+                          className={inputCls}
+                          value={f.q}
+                          placeholder="Soru"
+                          maxLength={300}
+                          onChange={(e) => {
+                            setFaqSaved(false);
+                            setFaq((list) =>
+                              list.map((x, j) =>
+                                j === i ? { ...x, q: e.target.value } : x,
+                              ),
+                            );
+                          }}
+                        />
+                        <textarea
+                          rows={3}
+                          className={inputCls}
+                          value={f.a}
+                          placeholder="Cevap"
+                          maxLength={3000}
+                          onChange={(e) => {
+                            setFaqSaved(false);
+                            setFaq((list) =>
+                              list.map((x, j) =>
+                                j === i ? { ...x, a: e.target.value } : x,
+                              ),
+                            );
+                          }}
+                        />
+                      </div>
+                      <div className="flex shrink-0 flex-col gap-1">
+                        <button
+                          type="button"
+                          disabled={i === 0}
+                          onClick={() => {
+                            setFaqSaved(false);
+                            setFaq((list) => {
+                              const c = [...list];
+                              [c[i - 1], c[i]] = [c[i], c[i - 1]];
+                              return c;
+                            });
+                          }}
+                          aria-label="Yukarı taşı"
+                          className="cursor-pointer rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-500 transition-colors hover:border-neutral-400 disabled:cursor-default disabled:opacity-30"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          disabled={i === faq.length - 1}
+                          onClick={() => {
+                            setFaqSaved(false);
+                            setFaq((list) => {
+                              const c = [...list];
+                              [c[i], c[i + 1]] = [c[i + 1], c[i]];
+                              return c;
+                            });
+                          }}
+                          aria-label="Aşağı taşı"
+                          className="cursor-pointer rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-500 transition-colors hover:border-neutral-400 disabled:cursor-default disabled:opacity-30"
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFaqSaved(false);
+                            setFaq((list) => list.filter((_, j) => j !== i));
+                          }}
+                          aria-label="Soruyu sil"
+                          className="cursor-pointer rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-500 transition-colors hover:border-red-300 hover:text-red-500"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void adminSaveSettings({ faq }).then((r) => {
+                      if (r.ok) setFaqSaved(true);
+                    });
+                  }}
+                  className="cursor-pointer rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-emerald-600"
+                >
+                  Kaydet
+                </button>
+                {faqSaved && (
+                  <span className="text-sm font-medium text-emerald-600">
+                    ✓ Kaydedildi
+                  </span>
+                )}
+                <a
+                  href="/merak-edilenler"
+                  target="_blank"
+                  className="ml-auto text-xs font-semibold text-sky-600 hover:underline"
+                >
+                  Sayfayı gör →
+                </a>
+              </div>
+            </section>
+
+            {/* Bize Yazılanlar */}
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-neutral-700">
+                📬 Bize Yazılanlar
+                {contacts.length > 0 && (
+                  <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                    {contacts.length}
+                  </span>
+                )}
+              </h2>
+              <p className="mt-1 text-xs text-neutral-400">
+                /bize-ulasin sayfasındaki iletişim formundan gelen mesajlar.
+                Doğrudan e-posta kutusu: bilgi@manifestduvari.com
+              </p>
+
+              {contacts.length === 0 ? (
+                <p className="mt-4 rounded-xl bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-400">
+                  Henüz mesaj yok.
+                </p>
+              ) : (
+                <div className="mt-4 space-y-2">
+                  {contacts.map((m) => (
+                    <div key={m.id} className="rounded-xl bg-neutral-50 p-3">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setContactOpen(contactOpen === m.id ? null : m.id)
+                          }
+                          className="cursor-pointer text-sm font-bold text-neutral-800 hover:underline"
+                        >
+                          {m.firstName} {m.lastName}
+                        </button>
+                        <a
+                          href={`mailto:${m.email}`}
+                          className="text-xs font-medium text-sky-600 hover:underline"
+                        >
+                          {m.email}
+                        </a>
+                        {m.phone && (
+                          <span className="text-xs text-neutral-500">
+                            📞 {m.phone}
+                          </span>
+                        )}
+                        <span className="ml-auto text-[11px] text-neutral-400">
+                          {new Date(m.ts).toLocaleString("tr-TR", {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void adminDeleteContact(m.id).then(() => {
+                              setContacts((list) =>
+                                list.filter((x) => x.id !== m.id),
+                              );
+                            });
+                          }}
+                          className="cursor-pointer rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[11px] font-medium text-neutral-500 transition-colors hover:border-red-300 hover:text-red-500"
+                        >
+                          Sil
+                        </button>
+                      </div>
+                      <p
+                        className={`mt-2 whitespace-pre-wrap text-sm text-neutral-600 ${
+                          contactOpen === m.id ? "" : "line-clamp-2"
+                        }`}
+                      >
+                        {m.message}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+
         {/* ── Ayarlar: AI denetim anahtarı + SMTP + Google ile giriş ── */}
         {tab === "mail" && mailCfg && (
           <div className="mt-5 space-y-5">
+            {/* ── Instagram — header'daki davet yazısı ve linki ── */}
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-neutral-700">
+                📸 Instagram
+              </h2>
+              <p className="mt-1 text-xs text-neutral-400">
+                Sitenin sol üst köşesinde görünen davet. Link boş bırakılırsa
+                header&apos;da gösterilmez.
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-neutral-500">
+                    Yazı
+                  </span>
+                  <input
+                    className={inputCls}
+                    value={insta.text}
+                    maxLength={60}
+                    placeholder="bizi instagramda takip et"
+                    onChange={(e) => {
+                      setInstaSaved(false);
+                      setInsta((s) => ({ ...s, text: e.target.value }));
+                    }}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-neutral-500">
+                    Link
+                  </span>
+                  <input
+                    className={inputCls}
+                    value={insta.url}
+                    maxLength={300}
+                    placeholder="https://instagram.com/manifestduvari"
+                    onChange={(e) => {
+                      setInstaSaved(false);
+                      setInsta((s) => ({ ...s, url: e.target.value.trim() }));
+                    }}
+                  />
+                </label>
+              </div>
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void adminSaveSettings({ instagram: insta }).then((r) => {
+                      if (r.ok) setInstaSaved(true);
+                    });
+                  }}
+                  className="cursor-pointer rounded-xl bg-emerald-500 px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-600"
+                >
+                  Kaydet
+                </button>
+                {instaSaved && (
+                  <span className="text-sm font-medium text-emerald-600">
+                    ✓ Kaydedildi
+                  </span>
+                )}
+              </div>
+            </section>
+
             {/* ── Yapay zeka denetimi: Anthropic API anahtarı ── */}
             <section className="rounded-2xl bg-white p-5 shadow-sm">
               <h2 className="text-sm font-bold text-neutral-700">

@@ -2459,10 +2459,29 @@ export default function Home() {
       {/* Header — ortak bileşen; arama paneli children olarak asılır */}
       <SiteHeader>
 
-        {/* Manifest arama + yıl/ay filtresi — header'dan sarkan panel */}
+        {/* Kayan bilgi şeridi — header'ın hemen altında, tam genişlik */}
+        <div className="absolute inset-x-0 top-full h-[30px] overflow-hidden border-b border-amber-200/60 bg-gradient-to-r from-amber-50/95 via-orange-50/95 to-amber-50/95 backdrop-blur">
+          <div className="mw-marquee flex h-full w-max items-center whitespace-nowrap">
+            {Array.from({ length: 2 }, (_, half) => (
+              <span key={half} className="flex items-center">
+                {Array.from({ length: 6 }, (_, i) => (
+                  <span
+                    key={i}
+                    className="flex items-center gap-2 pr-12 text-[11.5px] font-semibold tracking-wide text-amber-700"
+                  >
+                    <span aria-hidden>✨</span>
+                    Tüm manifestlerin yerleri gece 12&apos;de karıştırılır
+                  </span>
+                ))}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Manifest arama + yıl/ay filtresi — şeridin altından sarkan panel */}
         <form
           onSubmit={handleSearch}
-          className={`absolute left-1/2 top-full flex h-11 max-w-[96vw] -translate-x-1/2 items-center rounded-b-2xl border-x border-b bg-white/95 px-4 shadow-[0_8px_20px_rgba(0,0,0,0.1)] backdrop-blur transition-colors ${
+          className={`absolute left-1/2 top-[calc(100%+30px)] flex h-11 max-w-[96vw] -translate-x-1/2 items-center rounded-b-2xl border-x border-b bg-white/95 px-4 shadow-[0_8px_20px_rgba(0,0,0,0.1)] backdrop-blur transition-colors ${
             searchErr ? "border-red-400" : "border-neutral-200"
           }`}
         >
