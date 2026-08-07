@@ -53,6 +53,7 @@ import {
   type FaqItem,
   type InstagramSetting,
   type MarqueeSetting,
+  type NotifySettings,
   type SponsorCampaign,
 } from "../lib/api";
 import {
@@ -420,6 +421,7 @@ export default function AdminPage() {
     | "reports"
     | "sponsors"
     | "content"
+    | "notify"
     | "mail"
   >("overview");
 
@@ -460,6 +462,13 @@ export default function AdminPage() {
   // Yıl simülasyonu (Ayarlar) — 2027 davranışını test etmek için
   const [simYear, setSimYear] = useState("");
   const [simSaved, setSimSaved] = useState(false);
+
+  // Otomatik bildirim anahtarları (Bildirimler sekmesi)
+  const [notify, setNotify] = useState<NotifySettings>({
+    moderation: true,
+    accountDeleted: true,
+    verifyCode: true,
+  });
 
   // Arama alanları — üyeler (isim/e-posta) ve üye manifestleri (kod/rumuz)
   const [mSearch, setMSearch] = useState("");
@@ -539,6 +548,7 @@ export default function AdminPage() {
         setInsta(s.instagram ?? { text: "", url: "" });
         setMarq(s.marquee ?? { text: "", seconds: 36 });
         setSimYear(s.simYear ? String(s.simYear) : "");
+        if (s.notify) setNotify(s.notify);
       }
       setReady(true);
     });
@@ -599,6 +609,13 @@ export default function AdminPage() {
     if (!r?.ok) return setSpErr(r?.error ?? "Kaydedilemedi.");
     setSponsors(await adminSponsors());
     setSpEdit(null);
+  }
+
+  // Bildirim anahtarı — switch anında kaydedilir
+  function toggleNotify(key: keyof NotifySettings) {
+    const next = { ...notify, [key]: !notify[key] };
+    setNotify(next);
+    void adminSaveSettings({ notify: next }).catch(() => {});
   }
 
   async function deleteSponsor(id: number) {
@@ -916,6 +933,7 @@ export default function AdminPage() {
     { key: "reports", label: "Bildirilenler" },
     { key: "sponsors", label: "Reklam" },
     { key: "content", label: "İçerik" },
+    { key: "notify", label: "Bildirimler" },
     { key: "mail", label: "Ayarlar" },
   ] as const;
 
@@ -2452,6 +2470,81 @@ export default function AdminPage() {
                   ))}
                 </div>
               )}
+            </section>
+          </div>
+        )}
+
+        {/* ── Bildirimler: otomatik e-posta anahtarları ── */}
+        {tab === "notify" && (
+          <div className="mt-5 space-y-5">
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-neutral-700">
+                🔔 Otomatik Bildirimler
+              </h2>
+              <p className="mt-1 text-xs text-neutral-400">
+                Hangi olayda kime otomatik e-posta gittiğini buradan yönet.
+                Kapatılan bildirim sunucudan hiç gönderilmez. Gönderim için
+                Ayarlar&apos;daki SMTP yapılandırmasının dolu olması gerekir.
+              </p>
+              <div className="mt-4 space-y-3">
+                {(
+                  [
+                    {
+                      key: "moderation",
+                      title: "Manifest kaldırıldığında",
+                      desc:
+                        "Moderasyon onayı ya da admin silmesiyle yayından " +
+                        "kaldırılan manifestin sahibine yumuşak tonlu " +
+                        "bilgilendirme maili gider.",
+                      tone: "bg-neutral-50",
+                    },
+                    {
+                      key: "accountDeleted",
+                      title: "Hesap silindiğinde",
+                      desc:
+                        "Admin bir üyeliği sildiğinde üyeye hesabının ve " +
+                        "manifestlerinin kaldırıldığı bilgisi gider.",
+                      tone: "bg-neutral-50",
+                    },
+                    {
+                      key: "verifyCode",
+                      title: "Doğrulama kodu",
+                      desc:
+                        "Üye olurken ve şifre sıfırlarken e-postaya 6 haneli " +
+                        "kod gider. Kapatılırsa kod e-postayla gönderilmez, " +
+                        "ekrandaki demo bildirimine düşer; canlıda kapatılması " +
+                        "önerilmez.",
+                      tone: "bg-amber-50/70",
+                    },
+                  ] as const
+                ).map((row) => (
+                  <div
+                    key={row.key}
+                    className={`flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 ${row.tone}`}
+                  >
+                    <div className="min-w-0 max-w-[calc(100%-70px)]">
+                      <p className="text-sm font-semibold text-neutral-700">
+                        {row.title}
+                      </p>
+                      <p className="text-xs text-neutral-400">{row.desc}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => toggleNotify(row.key)}
+                      aria-label={`${row.title} bildirimini aç/kapat`}
+                      className={`relative h-7 w-12 cursor-pointer rounded-full transition-colors ${
+                        notify[row.key] ? "bg-emerald-500" : "bg-neutral-300"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${
+                          notify[row.key] ? "left-[22px]" : "left-0.5"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </section>
           </div>
         )}

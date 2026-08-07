@@ -368,6 +368,14 @@ export type AdminSettings = {
   instagram: InstagramSetting;
   marquee: MarqueeSetting;
   simYear: number; // 0 = kapalı (gerçek yıl)
+  notify: NotifySettings;
+};
+
+// Otomatik bildirim anahtarları (admin Bildirimler sekmesi)
+export type NotifySettings = {
+  moderation: boolean;
+  accountDeleted: boolean;
+  verifyCode: boolean;
 };
 
 export async function adminSettings(): Promise<AdminSettings | null> {
@@ -386,6 +394,7 @@ export function adminSaveSettings(patch: {
   instagram?: InstagramSetting;
   marquee?: MarqueeSetting;
   simYear?: number;
+  notify?: Partial<NotifySettings>;
 }) {
   return post<{ ok: boolean }>("/api/admin/settings", patch, "PUT");
 }

@@ -7,6 +7,7 @@
 import nodemailer from "nodemailer";
 import type { Pool } from "pg";
 import { getMailSettings } from "./db";
+import { getNotify } from "./content";
 
 export async function smtpConfigured(p: Pool): Promise<boolean> {
   const cfg = await getMailSettings(p);
@@ -50,13 +51,16 @@ export async function sendMail(
 // Moderasyon: kaldırılan manifest için yumuşak tonlu bilgilendirme maili.
 // Amaç üyeyi kaybetmeden davranışı düzeltmek — suçlayıcı değil, davetkâr.
 // reason boş verilirse sebep cümlesi atlanır ("kaldırılmıştır" bildirimi).
-export function sendModerationMail(
+export async function sendModerationMail(
   p: Pool,
   to: string,
   name: string,
   manifestText: string,
   reason: string,
 ) {
+  // Bildirim anahtarı kapalıysa (admin > Bildirimler) mail gönderilmez
+  if (!(await getNotify(p)).moderation)
+    return { ok: false, error: "Bildirim kapalı (admin)" };
   const firstName = name.split(/\s+/)[0] || name;
   const short =
     manifestText.length > 140 ? manifestText.slice(0, 140) + "…" : manifestText;
@@ -104,7 +108,9 @@ export function sendModerationMail(
 }
 
 // Üyelik silindi bildirimi — admin bir hesabı kaldırdığında gönderilir
-export function sendAccountDeletedMail(p: Pool, to: string, name: string) {
+export async function sendAccountDeletedMail(p: Pool, to: string, name: string) {
+  if (!(await getNotify(p)).accountDeleted)
+    return { ok: false, error: "Bildirim kapalı (admin)" };
   const firstName = name.split(/\s+/)[0] || name;
   const esc = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -140,8 +146,11 @@ export function sendAccountDeletedMail(p: Pool, to: string, name: string) {
   );
 }
 
-// Doğrulama / şifre sıfırlama kodu — site kimliğiyle uyumlu HTML şablon
-export function sendCodeMail(p: Pool, to: string, code: string) {
+// Doğrulama / şifre sıfırlama kodu — site kimliğiyle uyumlu HTML şablon.
+// Anahtar kapalıysa gönderilmez; akış demo bildirimine düşer (kod ekranda)
+export async function sendCodeMail(p: Pool, to: string, code: string) {
+  if (!(await getNotify(p)).verifyCode)
+    return { ok: false, error: "Bildirim kapalı (admin)" };
   const html = `
   <div style="margin:0;padding:32px 16px;background-color:#f4f1ea;font-family:Arial,Helvetica,sans-serif;">
     <div style="max-width:440px;margin:0 auto;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 8px 28px rgba(0,0,0,0.08);">

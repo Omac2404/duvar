@@ -88,7 +88,7 @@ const STAGES = [
   {
     title: "Hediye Kutusu",
     threshold: 250,
-    desc: "250 şansa ulaşınca manifestini duvardaki kurdeleli hediye kutusuna koyabilirsin.",
+    desc: "250 şansa ulaşınca manifestini şişeden çıkarıp hediye kutusuna koyabilirsin.",
   },
 ];
 
@@ -2010,11 +2010,9 @@ export default function PanelPage() {
               // Önizlemede kazanan manifest, yoksa örnek değerler kullanılır
               const pName = achieved[0]?.name ?? "Deniz";
               const unlocked = achieved.length > 0;
-              // Önizleme sayıları: barajın hemen üstünde örnek değerler
-              // (zarf 32/54, şişe 164, kutu 251); kazanılmışsa gerçek değer
-              const sample = [32, 54, 164, 251][i];
-              const shownLuck =
-                i <= 1 ? sample : (achieved[0]?.luck ?? sample);
+              // Önizleme sayıları hep sabit örnek değerlerdir: zarf 32/54,
+              // şişe 164, kutu 251 (kazanılmış olsa da önizleme değişmez)
+              const shownLuck = [32, 54, 164, 251][i];
               return (
                 <article
                   key={s.title}

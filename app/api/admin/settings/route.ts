@@ -11,9 +11,11 @@ import {
   getFaq,
   getInstagram,
   getMarquee,
+  getNotify,
   type FaqItem,
   type InstagramSetting,
   type MarqueeSetting,
+  type NotifySettings,
 } from "../../../lib/server/content";
 import { isAdmin } from "../../../lib/server/session";
 import { bad } from "../../../lib/server/validate";
@@ -31,6 +33,7 @@ export async function GET() {
     instagram: await getInstagram(db),
     marquee: await getMarquee(db),
     simYear: await getSetting(db, "simYear", 0),
+    notify: await getNotify(db),
   });
 }
 
@@ -46,6 +49,7 @@ export async function PUT(req: Request) {
     instagram?: InstagramSetting;
     marquee?: MarqueeSetting;
     simYear?: number;
+    notify?: Partial<NotifySettings>;
   };
   const db = await getDb();
   if (body.mail !== undefined) {
@@ -84,6 +88,14 @@ export async function PUT(req: Request) {
     const y = Math.floor(Number(body.simYear)) || 0;
     if (y !== 0 && (y < 2020 || y > 2100)) return bad("Geçersiz yıl.");
     await setSetting(db, "simYear", y);
+  }
+  if (body.notify !== undefined) {
+    const cur = await getNotify(db);
+    await setSetting(db, "notify", {
+      moderation: !!(body.notify.moderation ?? cur.moderation),
+      accountDeleted: !!(body.notify.accountDeleted ?? cur.accountDeleted),
+      verifyCode: !!(body.notify.verifyCode ?? cur.verifyCode),
+    });
   }
   return Response.json({ ok: true });
 }
