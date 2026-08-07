@@ -663,11 +663,6 @@ export default function AuthPage() {
         </div>
       </div>
 
-      {/* Test hesabı hatırlatması (demo) */}
-      <p className="mt-6 rounded-full bg-white/80 px-4 py-1.5 text-[11px] text-neutral-400 shadow-sm">
-        Test hesabı: <b className="text-neutral-500">deniz@test.com</b> · şifre{" "}
-        <b className="text-neutral-500">Manifest123</b>
-      </p>
 
       {/* ── Demo "gelen e-posta" bildirimi — sağ üstten süzülür ── */}
       {mail && (
