@@ -48,7 +48,9 @@ import {
   adminSaveUser,
   adminSettings,
   adminSponsors,
+  adminStats,
   adminUsers,
+  type AdminStats,
   type ContactMessage,
   type FaqItem,
   type InstagramSetting,
@@ -190,6 +192,188 @@ function pendingRewards(m: MemberManifest): string[] {
   if (m.luck >= 150 && !m.bottled && !m.boxed) p.push("🍾 Şişe onayı bekliyor");
   if (m.luck >= 250 && !m.boxed) p.push("🎁 Kutu onayı bekliyor");
   return p;
+}
+
+// ── Genel Bakış: istatistik kartı + mini grafikler ──────────────────────
+// Grafik renkleri doğrulanmış veri-görselleştirme paletinden: seri-1 mavi,
+// seri-2 turuncu; ızgara/eksen/etiket mürekkepleri nötr tonlarda
+
+const VIZ = {
+  blue: "#2a78d6",
+  orange: "#eb6834",
+  grid: "#e1e0d9",
+  axis: "#c3c2b7",
+  muted: "#898781",
+};
+
+function StatTile({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+}) {
+  return (
+    <div className="rounded-2xl bg-white p-4 shadow-sm">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-bold text-neutral-800">
+        {typeof value === "number" ? value.toLocaleString("tr-TR") : value}
+      </p>
+      {sub && <p className="text-[11px] text-neutral-400">{sub}</p>}
+    </div>
+  );
+}
+
+// 30 günlük tek serilik zaman grafiği — bar ya da çizgi, gezinme ipuçlu
+function DailyChart({
+  title,
+  data,
+  color,
+  kind,
+}: {
+  title: string;
+  data: { label: string; value: number }[];
+  color: string;
+  kind: "bar" | "line";
+}) {
+  const [hov, setHov] = useState<number | null>(null);
+  const W = 620;
+  const H = 170;
+  const P = { t: 10, r: 6, b: 20, l: 34 };
+  const iw = W - P.l - P.r;
+  const ih = H - P.t - P.b;
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const step = iw / Math.max(1, data.length);
+  const y = (v: number) => P.t + ih - (v / max) * ih;
+  const total = data.reduce((a, d) => a + d.value, 0);
+  return (
+    <section className="rounded-2xl bg-white p-5 shadow-sm">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="text-sm font-bold text-neutral-700">{title}</h2>
+        <span className="text-[11px] font-medium text-neutral-400">
+          30 günde toplam {total.toLocaleString("tr-TR")}
+        </span>
+      </div>
+      <div className="relative mt-2">
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          className="w-full"
+          role="img"
+          aria-label={title}
+        >
+          {/* Izgara + y etiketleri: 0 / orta / en yüksek */}
+          {[0, 0.5, 1].map((f) => (
+            <g key={f}>
+              <line
+                x1={P.l}
+                x2={W - P.r}
+                y1={y(max * f)}
+                y2={y(max * f)}
+                stroke={f === 0 ? VIZ.axis : VIZ.grid}
+                strokeWidth={1}
+              />
+              <text
+                x={P.l - 5}
+                y={y(max * f) + 3}
+                textAnchor="end"
+                fontSize={9}
+                fill={VIZ.muted}
+              >
+                {Math.round(max * f).toLocaleString("tr-TR")}
+              </text>
+            </g>
+          ))}
+          {/* Seri */}
+          {kind === "bar" ? (
+            data.map((d, i) => {
+              const h = Math.max(d.value > 0 ? 2 : 0, (d.value / max) * ih);
+              return (
+                <rect
+                  key={i}
+                  x={P.l + i * step + 1}
+                  y={P.t + ih - h}
+                  width={Math.max(2, step - 2)}
+                  height={h}
+                  rx={2}
+                  fill={color}
+                  opacity={hov === null || hov === i ? 1 : 0.45}
+                />
+              );
+            })
+          ) : (
+            <>
+              <path
+                d={data
+                  .map(
+                    (d, i) =>
+                      `${i === 0 ? "M" : "L"}${P.l + (i + 0.5) * step},${y(d.value)}`,
+                  )
+                  .join(" ")}
+                fill="none"
+                stroke={color}
+                strokeWidth={2}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+              {hov !== null && (
+                <circle
+                  cx={P.l + (hov + 0.5) * step}
+                  cy={y(data[hov].value)}
+                  r={4}
+                  fill={color}
+                  stroke="#ffffff"
+                  strokeWidth={2}
+                />
+              )}
+            </>
+          )}
+          {/* x etiketleri: ~haftada bir (son etikete çok yaklaşanlar atlanır) */}
+          {data.map((d, i) =>
+            (i % 7 === 0 && i < data.length - 3) || i === data.length - 1 ? (
+              <text
+                key={i}
+                x={P.l + (i + 0.5) * step}
+                y={H - 6}
+                textAnchor="middle"
+                fontSize={9}
+                fill={VIZ.muted}
+              >
+                {d.label}
+              </text>
+            ) : null,
+          )}
+          {/* Gezinme hedefleri — bar/noktadan geniş */}
+          {data.map((_, i) => (
+            <rect
+              key={`h${i}`}
+              x={P.l + i * step}
+              y={P.t}
+              width={step}
+              height={ih}
+              fill="transparent"
+              onMouseEnter={() => setHov(i)}
+              onMouseLeave={() => setHov(null)}
+            />
+          ))}
+        </svg>
+        {/* İpucu */}
+        {hov !== null && (
+          <div
+            className="pointer-events-none absolute -top-1 z-10 -translate-x-1/2 whitespace-nowrap rounded-lg bg-neutral-800 px-2.5 py-1 text-[11px] font-medium text-white shadow-lg"
+            style={{
+              left: `${((P.l + (hov + 0.5) * step) / W) * 100}%`,
+            }}
+          >
+            {data[hov].label}: {data[hov].value.toLocaleString("tr-TR")}
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }
 
 // ── Reklam sekmesi yardımcıları ──────────────────────────────────────────
@@ -463,6 +647,9 @@ export default function AdminPage() {
   const [simYear, setSimYear] = useState("");
   const [simSaved, setSimSaved] = useState(false);
 
+  // Genel Bakış istatistikleri — kartlar + 30 günlük seriler
+  const [stat, setStat] = useState<AdminStats | null>(null);
+
   // Otomatik bildirim anahtarları (Bildirimler sekmesi)
   const [notify, setNotify] = useState<NotifySettings>({
     moderation: true,
@@ -539,6 +726,7 @@ export default function AdminPage() {
       adminSponsors(),
       adminContactMessages(),
     ]).then(([u, r, s, m, sp, cm]) => {
+      void adminStats().then(setStat);
       setUsers(u);
       setReports(r);
       setModRuns(m);
@@ -874,21 +1062,6 @@ export default function AdminPage() {
     setConfirmReset(false);
   }
 
-  // ── Genel bakış istatistikleri — manifest sayıları sunucudan gelir ─────
-  const stats = useMemo(
-    () => ({
-      members: users.length,
-      verified: users.filter((u) => u.verified).length,
-      manifests: manCounts.total,
-      realized: manCounts.realized,
-      bottled: manCounts.bottled,
-      boxed: manCounts.boxed,
-      demo: manCounts.demo,
-      totalLuck: manCounts.totalLuck,
-    }),
-    [users, manCounts],
-  );
-
   // Yetki yokken şifre ekranı; kontrol sürerken boş ekran
   if (authed === false)
     return (
@@ -1000,118 +1173,177 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {/* ── Genel Bakış ── */}
+        {/* ── Genel Bakış — istatistik kartları + grafikler ── */}
         {tab === "overview" && (
           <div className="mt-5 space-y-5">
-            {/* Üye istatistikleri */}
-            <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[
-                ["Üye", stats.members, `${stats.verified} doğrulanmış`],
-                [
-                  "Üye Manifesti",
-                  stats.manifests,
-                  `${stats.realized} gerçekleşmiş`,
-                ],
-                [
-                  "Şişede / Kutuda",
-                  `${stats.bottled} / ${stats.boxed}`,
-                  "üye manifestleri",
-                ],
-                [
-                  "Toplam Şans",
-                  stats.totalLuck.toLocaleString("tr-TR"),
-                  "üye manifestlerinde ⭐",
-                ],
-              ].map(([label, value, sub]) => (
-                <div
-                  key={String(label)}
-                  className="rounded-2xl bg-white p-4 shadow-sm"
-                >
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
-                    {label}
-                  </p>
-                  <p className="mt-1 text-2xl font-bold text-neutral-800">
-                    {value}
-                  </p>
-                  <p className="text-[11px] text-neutral-400">{sub}</p>
-                </div>
-              ))}
+            {/* Üyeler: bugün / son 7 gün / son 30 gün / toplam */}
+            <section>
+              <h2 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                👤 Üyeler
+              </h2>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <StatTile label="Bugün Katılan" value={stat?.users.today ?? "…"} />
+                <StatTile label="Son 7 Gün" value={stat?.users.week ?? "…"} />
+                <StatTile label="Son 30 Gün" value={stat?.users.month ?? "…"} />
+                <StatTile
+                  label="Toplam Üye"
+                  value={stat?.users.total ?? "…"}
+                  sub={`${(stat?.users.verified ?? 0).toLocaleString("tr-TR")} doğrulanmış`}
+                />
+              </div>
             </section>
 
-            {/* Ayarlar */}
-            <section className="rounded-2xl bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-bold text-neutral-700">⚙️ Ayarlar</h2>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-neutral-50 px-4 py-3">
-                <div>
-                  <p className="text-sm font-semibold text-neutral-700">
-                    Reklam alanları
-                  </p>
-                  <p className="text-xs text-neutral-400">
-                    Duvarda topbar şeridi + 2 banner açılır; zarflar banner
-                    bölgesinin altından başlar.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={toggleAds}
-                  aria-label="Reklam alanlarını aç/kapat"
-                  className={`relative h-7 w-12 cursor-pointer rounded-full transition-colors ${
-                    ads ? "bg-emerald-500" : "bg-neutral-300"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${
-                      ads ? "left-[22px]" : "left-0.5"
-                    }`}
-                  />
-                </button>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-amber-50/70 px-4 py-3">
-                <div>
-                  <p className="text-sm font-semibold text-neutral-700">
-                    Test modu
-                  </p>
-                  <p className="text-xs text-neutral-400">
-                    Duvar popup&apos;larında şans dileme sınırsız ve
-                    +10&apos;ar olur; üye manifestlerine kalıcı yazılır —
-                    sticker, parlak renk, şişe ve kutu barajları hızla
-                    test edilir.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={toggleTestMode}
-                  aria-label="Test modunu aç/kapat"
-                  className={`relative h-7 w-12 cursor-pointer rounded-full transition-colors ${
-                    testMode ? "bg-amber-500" : "bg-neutral-300"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${
-                      testMode ? "left-[22px]" : "left-0.5"
-                    }`}
-                  />
-                </button>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-red-50/60 px-4 py-3">
-                <div>
-                  <p className="text-sm font-semibold text-neutral-700">
-                    Üye verilerini sıfırla
-                  </p>
-                  <p className="text-xs text-neutral-400">
-                    Tüm üyeler, manifestler, oturum ve kodlar silinir; test
-                    hesabı ilk haliyle geri gelir.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setConfirmReset(true)}
-                  className="cursor-pointer rounded-xl border border-red-200 bg-white px-4 py-2 text-xs font-semibold text-red-500 transition-colors hover:bg-red-50"
-                >
-                  Sıfırla
-                </button>
+            {/* Üye manifestleri */}
+            <section>
+              <h2 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                ✉️ Üye Manifestleri
+              </h2>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <StatTile
+                  label="Bugün Yazılan"
+                  value={stat?.manifests.today ?? "…"}
+                />
+                <StatTile label="Son 7 Gün" value={stat?.manifests.week ?? "…"} />
+                <StatTile
+                  label="Son 30 Gün"
+                  value={stat?.manifests.month ?? "…"}
+                />
+                <StatTile
+                  label="Toplam"
+                  value={stat?.manifests.total ?? "…"}
+                  sub={`${(stat?.manifests.realized ?? 0).toLocaleString("tr-TR")} gerçekleşmiş`}
+                />
               </div>
             </section>
+
+            {/* Etkileşim + operasyon */}
+            <section>
+              <h2 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                ⭐ Etkileşim (duvar geneli)
+              </h2>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <StatTile
+                  label="Toplam Şans"
+                  value={stat?.engage.luck ?? "…"}
+                  sub="dilenen ⭐"
+                />
+                <StatTile
+                  label="Toplam Tebrik"
+                  value={stat?.engage.cheers ?? "…"}
+                  sub="gerçekleşenlere 👏"
+                />
+                <StatTile
+                  label="Toplam Görüntülenme"
+                  value={stat?.engage.views ?? "…"}
+                  sub="zarf açılışı"
+                />
+                <StatTile
+                  label="Demo Zarf"
+                  value={stat?.engage.demo ?? "…"}
+                  sub="duvardaki dolgu"
+                />
+              </div>
+            </section>
+
+            <section>
+              <h2 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                🧭 Operasyon
+              </h2>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <StatTile
+                  label="Bekleyen Denetim"
+                  value={stat?.ops.pendingFlags ?? "…"}
+                  sub="AI kontrolünde"
+                />
+                <StatTile
+                  label="Bildirilen"
+                  value={stat?.ops.reports ?? "…"}
+                  sub="ziyaretçi şikayeti"
+                />
+                <StatTile
+                  label="Gelen Mesaj"
+                  value={stat?.ops.messages ?? "…"}
+                  sub="Bize Yazılanlar"
+                />
+                <StatTile
+                  label="Sponsor Açılma"
+                  value={stat?.sponsors.views ?? "…"}
+                  sub={`${(stat?.sponsors.links ?? 0).toLocaleString("tr-TR")} link · ${(stat?.sponsors.coupons ?? 0).toLocaleString("tr-TR")} kod`}
+                />
+              </div>
+            </section>
+
+            {/* Grafikler — son 30 gün */}
+            {stat && (
+              <div className="grid gap-5 lg:grid-cols-2">
+                <DailyChart
+                  title="Yeni Manifestler (son 30 gün)"
+                  data={stat.days.map((d) => ({
+                    label: d.label,
+                    value: d.manifests,
+                  }))}
+                  color={VIZ.blue}
+                  kind="bar"
+                />
+                <DailyChart
+                  title="Yeni Üyeler (son 30 gün)"
+                  data={stat.days.map((d) => ({
+                    label: d.label,
+                    value: d.users,
+                  }))}
+                  color={VIZ.orange}
+                  kind="line"
+                />
+              </div>
+            )}
+
+            {/* Ödül etapları — üye manifestlerinin dağılımı */}
+            {stat && (
+              <section className="rounded-2xl bg-white p-5 shadow-sm">
+                <h2 className="text-sm font-bold text-neutral-700">
+                  🏆 Ödül Etapları (üye manifestleri)
+                </h2>
+                <div className="mt-3 space-y-2.5">
+                  {(
+                    [
+                      ["Sticker'lı", stat.manifests.sticker],
+                      ["Özel renkli", stat.manifests.special],
+                      ["Şişede", stat.manifests.bottled],
+                      ["Kutuda", stat.manifests.boxed],
+                      ["Gerçekleşen", stat.manifests.realized],
+                    ] as const
+                  ).map(([label, v]) => {
+                    const max = Math.max(
+                      1,
+                      stat.manifests.sticker,
+                      stat.manifests.special,
+                      stat.manifests.bottled,
+                      stat.manifests.boxed,
+                      stat.manifests.realized,
+                    );
+                    return (
+                      <div key={label} className="flex items-center gap-3">
+                        <span className="w-24 shrink-0 text-xs font-medium text-neutral-500">
+                          {label}
+                        </span>
+                        <div className="h-3 flex-1 overflow-hidden rounded-full bg-neutral-100">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${(v / max) * 100}%`,
+                              backgroundColor: VIZ.blue,
+                            }}
+                          />
+                        </div>
+                        <span className="w-10 shrink-0 text-right text-xs font-semibold text-neutral-700">
+                          {v.toLocaleString("tr-TR")}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
           </div>
         )}
 
@@ -2627,6 +2859,81 @@ export default function AdminPage() {
         {/* ── Ayarlar: AI denetim anahtarı + SMTP + Google ile giriş ── */}
         {tab === "mail" && mailCfg && (
           <div className="mt-5 space-y-5">
+            {/* ── Genel — Genel Bakış'tan taşınan anahtarlar ── */}
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-neutral-700">🧰 Genel</h2>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-neutral-50 px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-neutral-700">
+                    Reklam alanları
+                  </p>
+                  <p className="text-xs text-neutral-400">
+                    Duvarda topbar şeridi + 2 banner açılır; zarflar banner
+                    bölgesinin altından başlar.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleAds}
+                  aria-label="Reklam alanlarını aç/kapat"
+                  className={`relative h-7 w-12 cursor-pointer rounded-full transition-colors ${
+                    ads ? "bg-emerald-500" : "bg-neutral-300"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${
+                      ads ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-amber-50/70 px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-neutral-700">
+                    Test modu
+                  </p>
+                  <p className="text-xs text-neutral-400">
+                    Duvar popup&apos;larında şans dileme sınırsız ve
+                    +10&apos;ar olur; üye manifestlerine kalıcı yazılır.
+                    Sticker, parlak renk, şişe ve kutu barajları hızla test
+                    edilir.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleTestMode}
+                  aria-label="Test modunu aç/kapat"
+                  className={`relative h-7 w-12 cursor-pointer rounded-full transition-colors ${
+                    testMode ? "bg-amber-500" : "bg-neutral-300"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${
+                      testMode ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-red-50/60 px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-neutral-700">
+                    Üye verilerini sıfırla
+                  </p>
+                  <p className="text-xs text-neutral-400">
+                    Tüm üyeler, manifestler, oturum ve kodlar silinir; test
+                    hesabı ilk haliyle geri gelir.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setConfirmReset(true)}
+                  className="cursor-pointer rounded-xl border border-red-200 bg-white px-4 py-2 text-xs font-semibold text-red-500 transition-colors hover:bg-red-50"
+                >
+                  Sıfırla
+                </button>
+              </div>
+            </section>
+
             {/* ── Instagram — header'daki davet yazısı ve linki ── */}
             <section className="rounded-2xl bg-white p-5 shadow-sm">
               <h2 className="text-sm font-bold text-neutral-700">

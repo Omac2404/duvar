@@ -2177,6 +2177,17 @@ export default function Home() {
   // 1000 zarfın tamamı asla aynı anda DOM'da durmaz
   const [range, setRange] = useState({ start: 0, end: 30 });
 
+  // Kaydırma konumu rozeti (ss107): ekranın ortasındaki zarfın sırası
+  // yüzlük dilime yuvarlanır — "100'ler", "200'ler" diye akar
+  const midRank = Math.max(
+    1,
+    Math.min(
+      meta?.plain ?? 1,
+      Math.round(((range.start + range.end) / 2) * cols),
+    ),
+  );
+  const hundredLabel = Math.ceil(midRank / 100) * 100;
+
   useEffect(() => {
     let raf = 0;
     const update = () => {
@@ -2591,6 +2602,16 @@ export default function Home() {
           </form>
         </div>
       </SiteHeader>
+
+      {/* Kaydırma konumu — sağ altta yüzlük dilim rozeti (ss107) */}
+      {(meta?.plain ?? 0) > 0 && (
+        <div
+          aria-live="polite"
+          className="fixed bottom-4 right-4 z-[1400] rounded-full bg-white/90 px-3.5 py-1.5 text-xs font-semibold text-neutral-600 shadow-lg backdrop-blur"
+        >
+          {hundredLabel.toLocaleString("tr-TR")}&apos;ler
+        </div>
+      )}
 
       {/* Zarf duvarı — aşağı kaydırılabilir, satırlar görünür oldukça yüklenir */}
       <section

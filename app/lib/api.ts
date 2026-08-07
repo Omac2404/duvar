@@ -412,6 +412,39 @@ export function adminResetMembers() {
   return post<{ ok: boolean }>("/api/admin/reset");
 }
 
+// ── Admin: Genel Bakış istatistikleri ───────────────────────────────────
+
+export type AdminStats = {
+  users: {
+    today: number;
+    week: number;
+    month: number;
+    total: number;
+    verified: number;
+  };
+  manifests: {
+    today: number;
+    week: number;
+    month: number;
+    total: number;
+    sticker: number;
+    special: number;
+    bottled: number;
+    boxed: number;
+    realized: number;
+  };
+  engage: { luck: number; cheers: number; views: number; demo: number };
+  ops: { pendingFlags: number; reports: number; messages: number };
+  sponsors: { views: number; links: number; coupons: number };
+  days: { label: string; manifests: number; users: number }[];
+};
+
+export async function adminStats(): Promise<AdminStats | null> {
+  const res = await fetch("/api/admin/stats");
+  if (!res.ok) return null;
+  return await json<AdminStats>(res);
+}
+
 // ── Admin: sponsor kampanyaları (Reklam sekmesi) ─────────────────────────
 
 export type SponsorCampaign = SponsorPub & {
