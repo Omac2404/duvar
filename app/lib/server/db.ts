@@ -439,10 +439,18 @@ export async function setSetting(p: Pool, key: string, value: unknown) {
 
 // Etkin yıl — admin Ayarlar'daki yıl simülasyonu doluysa onu, yoksa
 // gerçek yılı döndürür. Yıllık manifest hakları ve panel/duvar varsayılan
-// yılı bunu okur; simülasyon 2027 davranışını canlıya çıkmadan test ettirir
+// yılı bunu okur; simülasyon 2027 davranışını canlıya çıkmadan test ettirir.
+// Gerçek yıl Türkiye saatine göre hesaplanır: sunucu UTC'de çalışsa da
+// yeni yıl 1 Ocak 00:00 TR'de döner
 export async function effectiveYear(p: Pool): Promise<number> {
   const y = Number(await getSetting(p, "simYear", 0));
-  return y >= 2020 && y <= 2100 ? y : new Date().getFullYear();
+  if (y >= 2020 && y <= 2100) return y;
+  return Number(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Europe/Istanbul",
+      year: "numeric",
+    }).format(new Date()),
+  );
 }
 
 // Etkin yıla damgalanmış zaman: gerçek yıl simüle edilenle aynıysa şimdi;
