@@ -1976,7 +1976,33 @@ export default function PanelPage() {
 
         {/* Başarımlar — 4 etap: sticker, özel renk, şişe, kutu */}
         {tab === "achievements" && (
-          <section className="mt-5 grid gap-3.5 sm:grid-cols-2">
+          <>
+            {/* Amaç — başarımların ruhunu anlatan kısa metin (ss105) */}
+            <section className="mt-4 overflow-hidden rounded-2xl bg-white shadow-sm">
+              <div className="h-1.5 w-full bg-[linear-gradient(90deg,#FFC8CD,#FFE8CD,#FFFFCD,#CDFFD8,#CDEAFF,#EBCDFF)]" />
+              <div className="px-6 py-5">
+                <p
+                  className="text-2xl text-neutral-800"
+                  style={{ fontFamily: "var(--font-caveat)" }}
+                >
+                  Dilekler paylaştıkça güçlenir ✨
+                </p>
+                <p className="mt-1.5 text-sm leading-relaxed text-neutral-600">
+                  Duvarda sana dilenen her şans, hayaline omuz veren küçük bir
+                  iyiliktir. İnsanlar zarfını açıp şans diledikçe evrene
+                  bıraktığın niyet topluluğun pozitif enerjisiyle büyür;
+                  manifestin önce süsünü, sonra parlak rengini kazanır, şişeye
+                  konur, en sonunda hediye kutusuna taşınır. Her etapta zarfın
+                  binlerce zarfın arasından biraz daha sıyrılır: sticker'ı
+                  yapıştırdıkça, rengi parladıkça, şişeye ve kutuya taşındıkça
+                  duvarda çok daha fazla fark edilir, çok daha fazla açılır ve
+                  daha çok şans toplar. Sen de başkalarının zarfını açıp şans
+                  dileyerek bu enerjiyi çoğaltabilirsin. 🌟
+                </p>
+              </div>
+            </section>
+
+            <section className="mt-3.5 grid gap-3.5 sm:grid-cols-2">
             {STAGES.map((s, i) => {
               const achieved = user.manifests
                 .filter((m) => m.luck >= s.threshold)
@@ -2134,7 +2160,8 @@ export default function PanelPage() {
                 </article>
               );
             })}
-          </section>
+            </section>
+          </>
         )}
 
         {/* ── Yeni manifest modalı — duvardaki açık zarf popup'ının birebir
