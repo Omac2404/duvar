@@ -570,6 +570,20 @@ function drawLetter(
   }
 }
 
+// Site logosu paylaşım kartının başlığına çizilir (bir kez yüklenir)
+let logoImg: Promise<HTMLImageElement> | null = null;
+function loadLogo(): Promise<HTMLImageElement> {
+  if (!logoImg) {
+    logoImg = new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = "/logo.png";
+    });
+  }
+  return logoImg;
+}
+
 async function drawShareImage(
   canvas: HTMLCanvasElement,
   m: MemberManifest,
@@ -619,21 +633,21 @@ async function drawShareImage(
   }
   ctx.globalAlpha = 1;
 
-  // Başlık
-  ctx.fillStyle = "#3d3a34";
-  ctx.font = `700 86px ${hand}`;
-  ctx.fillText("Manifest Duvarı", W / 2, 150);
-  ctx.font = `500 44px ${hand}`;
+  // Başlık — site logosu + site adresi (ss102)
+  try {
+    const logo = await loadLogo();
+    const lh = 150;
+    const lw = (logo.width / logo.height) * lh;
+    ctx.drawImage(logo, W / 2 - lw / 2, 42, lw, lh);
+  } catch {
+    // Logo yüklenemezse yazıya düşülür
+    ctx.fillStyle = "#3d3a34";
+    ctx.font = `700 86px ${hand}`;
+    ctx.fillText("Manifest Duvarı", W / 2, 150);
+  }
+  ctx.font = `500 42px ${hand}`;
   ctx.fillStyle = "#6f6a5e";
-  ctx.fillText(
-    m.boxed
-      ? "manifestim duvarda hediye kutusunda 🎁"
-      : m.bottled
-        ? "manifestim duvarda şişede"
-        : "manifestim duvarda asılı ✨",
-    W / 2,
-    218,
-  );
+  ctx.fillText("manifestduvari.com", W / 2, 248);
 
   const ex = 180;
   const ew = 720;
@@ -1022,11 +1036,13 @@ function ShareModal({
             İndir
           </button>
         </div>
-        <p className="mt-2 text-center text-[10px] leading-relaxed text-neutral-400">
-          {canNative
-            ? "Paylaş; sistem menüsünü açar — Instagram story, WhatsApp ve diğerleri buradan seçilir."
-            : "Bu tarayıcı doğrudan paylaşımı desteklemiyor; Paylaş görseli indirir, telefonda sistem menüsü açılır."}
-        </p>
+        {/* Doğrudan paylaşım desteklenmeyen tarayıcıda kısa bilgi kalır */}
+        {!canNative && (
+          <p className="mt-2 text-center text-[10px] leading-relaxed text-neutral-400">
+            Bu tarayıcı doğrudan paylaşımı desteklemiyor; Paylaş görseli
+            indirir, telefonda sistem menüsü açılır.
+          </p>
+        )}
         <button
           type="button"
           onClick={onClose}
