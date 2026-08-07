@@ -2540,7 +2540,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ── İçerik: Merak Edilenler (SSS) + Bize Yazılanlar ── */}
+        {/* ── İçerik: Merak Edilenler (SSS) düzenleyicisi ── */}
         {tab === "content" && (
           <div className="mt-5 space-y-5">
             {/* SSS editörü */}
@@ -2683,82 +2683,6 @@ export default function AdminPage() {
               </div>
             </section>
 
-            {/* Bize Yazılanlar */}
-            <section className="rounded-2xl bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-bold text-neutral-700">
-                📬 Bize Yazılanlar
-                {contacts.length > 0 && (
-                  <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">
-                    {contacts.length}
-                  </span>
-                )}
-              </h2>
-              <p className="mt-1 text-xs text-neutral-400">
-                /bize-ulasin sayfasındaki iletişim formundan gelen mesajlar.
-                Doğrudan e-posta kutusu: bilgi@manifestduvari.com
-              </p>
-
-              {contacts.length === 0 ? (
-                <p className="mt-4 rounded-xl bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-400">
-                  Henüz mesaj yok.
-                </p>
-              ) : (
-                <div className="mt-4 space-y-2">
-                  {contacts.map((m) => (
-                    <div key={m.id} className="rounded-xl bg-neutral-50 p-3">
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setContactOpen(contactOpen === m.id ? null : m.id)
-                          }
-                          className="cursor-pointer text-sm font-bold text-neutral-800 hover:underline"
-                        >
-                          {m.firstName} {m.lastName}
-                        </button>
-                        <a
-                          href={`mailto:${m.email}`}
-                          className="text-xs font-medium text-sky-600 hover:underline"
-                        >
-                          {m.email}
-                        </a>
-                        {m.phone && (
-                          <span className="text-xs text-neutral-500">
-                            📞 {m.phone}
-                          </span>
-                        )}
-                        <span className="ml-auto text-[11px] text-neutral-400">
-                          {new Date(m.ts).toLocaleString("tr-TR", {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                          })}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            void adminDeleteContact(m.id).then(() => {
-                              setContacts((list) =>
-                                list.filter((x) => x.id !== m.id),
-                              );
-                            });
-                          }}
-                          className="cursor-pointer rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[11px] font-medium text-neutral-500 transition-colors hover:border-red-300 hover:text-red-500"
-                        >
-                          Sil
-                        </button>
-                      </div>
-                      <p
-                        className={`mt-2 whitespace-pre-wrap text-sm text-neutral-600 ${
-                          contactOpen === m.id ? "" : "line-clamp-2"
-                        }`}
-                      >
-                        {m.message}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
           </div>
         )}
 
@@ -2882,6 +2806,83 @@ export default function AdminPage() {
                   </div>
                 ))}
               </div>
+            </section>
+
+            {/* Bize Yazılanlar — iletişim formundan gelen mesajlar */}
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-neutral-700">
+                📬 Bize Yazılanlar
+                {contacts.length > 0 && (
+                  <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                    {contacts.length}
+                  </span>
+                )}
+              </h2>
+              <p className="mt-1 text-xs text-neutral-400">
+                /bize-ulasin sayfasındaki iletişim formundan gelen mesajlar.
+                Doğrudan e-posta kutusu: bilgi@manifestduvari.com
+              </p>
+
+              {contacts.length === 0 ? (
+                <p className="mt-4 rounded-xl bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-400">
+                  Henüz mesaj yok.
+                </p>
+              ) : (
+                <div className="mt-4 space-y-2">
+                  {contacts.map((m) => (
+                    <div key={m.id} className="rounded-xl bg-neutral-50 p-3">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setContactOpen(contactOpen === m.id ? null : m.id)
+                          }
+                          className="cursor-pointer text-sm font-bold text-neutral-800 hover:underline"
+                        >
+                          {m.firstName} {m.lastName}
+                        </button>
+                        <a
+                          href={`mailto:${m.email}`}
+                          className="text-xs font-medium text-sky-600 hover:underline"
+                        >
+                          {m.email}
+                        </a>
+                        {m.phone && (
+                          <span className="text-xs text-neutral-500">
+                            📞 {m.phone}
+                          </span>
+                        )}
+                        <span className="ml-auto text-[11px] text-neutral-400">
+                          {new Date(m.ts).toLocaleString("tr-TR", {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void adminDeleteContact(m.id).then(() => {
+                              setContacts((list) =>
+                                list.filter((x) => x.id !== m.id),
+                              );
+                            });
+                          }}
+                          className="cursor-pointer rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[11px] font-medium text-neutral-500 transition-colors hover:border-red-300 hover:text-red-500"
+                        >
+                          Sil
+                        </button>
+                      </div>
+                      <p
+                        className={`mt-2 whitespace-pre-wrap text-sm text-neutral-600 ${
+                          contactOpen === m.id ? "" : "line-clamp-2"
+                        }`}
+                      >
+                        {m.message}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
           </div>
         )}
