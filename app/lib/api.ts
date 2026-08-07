@@ -107,12 +107,16 @@ export async function findWallCode(
 
 export type InstagramSetting = { text: string; url: string };
 
+// Duvardaki kayan bilgi şeridi — yazı boşsa gizlenir, seconds = tur süresi
+export type MarqueeSetting = { text: string; seconds: number };
+
 export type PublicSettings = {
   ads: boolean;
   testMode: boolean;
   googleClientId: string;
   smtpConfigured: boolean;
   instagram: InstagramSetting;
+  marquee: MarqueeSetting;
 };
 
 export async function fetchSettings(): Promise<PublicSettings> {
@@ -126,6 +130,7 @@ export async function fetchSettings(): Promise<PublicSettings> {
       googleClientId: "",
       smtpConfigured: false,
       instagram: { text: "", url: "" },
+      marquee: { text: "", seconds: 36 },
     };
   }
 }
@@ -359,6 +364,7 @@ export type AdminSettings = {
   aiEnabled: boolean;
   faq: FaqItem[];
   instagram: InstagramSetting;
+  marquee: MarqueeSetting;
 };
 
 export async function adminSettings(): Promise<AdminSettings | null> {
@@ -375,6 +381,7 @@ export function adminSaveSettings(patch: {
   aiEnabled?: boolean;
   faq?: FaqItem[];
   instagram?: InstagramSetting;
+  marquee?: MarqueeSetting;
 }) {
   return post<{ ok: boolean }>("/api/admin/settings", patch, "PUT");
 }

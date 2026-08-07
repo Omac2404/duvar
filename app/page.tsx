@@ -1977,8 +1977,16 @@ export default function Home() {
 
   // Reklam alanları — admin panelden açılıp kapatılır (backend ayarı)
   const [ads, setAds] = useState(false);
+  // Kayan şerit — yazı ve tur süresi admin Ayarlar'dan; yazı boşsa gizli
+  const [marquee, setMarquee] = useState<{ text: string; seconds: number }>({
+    text: "",
+    seconds: 36,
+  });
   useEffect(() => {
-    fetchSettings().then((s) => setAds(s.ads));
+    fetchSettings().then((s) => {
+      setAds(s.ads);
+      if (s.marquee) setMarquee(s.marquee);
+    });
   }, []);
   const [selected, setSelected] = useState<{
     env: Envelope;
@@ -2459,32 +2467,45 @@ export default function Home() {
       {/* Header — ortak bileşen; arama paneli children olarak asılır */}
       <SiteHeader>
 
-        {/* Kayan bilgi şeridi — header'ın hemen altında, tam genişlik */}
-        <div className="absolute inset-x-0 top-full h-[30px] overflow-hidden border-b border-amber-200/60 bg-gradient-to-r from-amber-50/95 via-orange-50/95 to-amber-50/95 backdrop-blur">
-          <div className="mw-marquee flex h-full w-max items-center whitespace-nowrap">
-            {Array.from({ length: 2 }, (_, half) => (
-              <span key={half} className="flex items-center">
-                {Array.from({ length: 6 }, (_, i) => (
-                  <span
-                    key={i}
-                    className="flex items-center gap-2 pr-12 text-[11.5px] font-semibold tracking-wide text-amber-700"
-                  >
-                    <span aria-hidden>✨</span>
-                    Tüm manifestlerin yerleri gece 12&apos;de karıştırılır
-                  </span>
-                ))}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Manifest arama + yıl/ay filtresi — şeridin altından sarkan panel */}
-        <form
-          onSubmit={handleSearch}
-          className={`absolute left-1/2 top-[calc(100%+30px)] flex h-11 max-w-[96vw] -translate-x-1/2 items-center rounded-b-2xl border-x border-b bg-white/95 px-4 shadow-[0_8px_20px_rgba(0,0,0,0.1)] backdrop-blur transition-colors ${
+        {/* Arama paneli — üstünde aynı genişlikte kayan bilgi şeridiyle
+            tek parça halinde header'dan sarkar (ss98) */}
+        <div
+          className={`absolute left-1/2 top-full w-max max-w-[96vw] -translate-x-1/2 rounded-b-2xl border-x border-b bg-white/95 shadow-[0_8px_20px_rgba(0,0,0,0.1)] backdrop-blur transition-colors ${
             searchErr ? "border-red-400" : "border-neutral-200"
           }`}
         >
+          {/* Kayan şerit — panelin üst kenarı. Yazı ve tur süresi admin
+              Ayarlar'dan gelir; yazı boşsa şerit hiç çizilmez. Panel
+              genişliğini yalnızca arama formu belirler; kayan içerik
+              mutlak konumludur ki paneli esnetmesin */}
+          {marquee.text.trim() && (
+            <div className="relative h-[22px] w-full overflow-hidden border-b border-amber-200/60 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50">
+              <div
+                className="mw-marquee absolute left-0 top-0 flex h-full w-max items-center whitespace-nowrap"
+                style={{ animationDuration: `${marquee.seconds}s` }}
+              >
+                {Array.from({ length: 2 }, (_, half) => (
+                  <span key={half} className="flex items-center">
+                    {Array.from({ length: 4 }, (_, i) => (
+                      <span
+                        key={i}
+                        className="flex items-center gap-1.5 pr-10 text-[10.5px] font-semibold tracking-wide text-amber-700"
+                      >
+                        <span aria-hidden>✨</span>
+                        {marquee.text}
+                      </span>
+                    ))}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Manifest arama + yıl/ay filtresi */}
+          <form
+            onSubmit={handleSearch}
+            className="relative flex h-11 items-center px-4"
+          >
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -2541,10 +2562,11 @@ export default function Home() {
             ))}
           </select>
           {/* Seçime uyan manifest sayısı — filtrelerin hemen altında */}
-          <span className="absolute right-2 top-[calc(100%+6px)] whitespace-nowrap rounded-full bg-white/90 px-3 py-1 text-[11px] font-medium text-neutral-500 shadow-sm backdrop-blur">
+          <span className="absolute right-2 top-[calc(100%+8px)] whitespace-nowrap rounded-full bg-white/90 px-3 py-1 text-[11px] font-medium text-neutral-500 shadow-sm backdrop-blur">
             {filteredCount.toLocaleString("tr-TR")} manifest
           </span>
-        </form>
+          </form>
+        </div>
       </SiteHeader>
 
       {/* Zarf duvarı — aşağı kaydırılabilir, satırlar görünür oldukça yüklenir */}

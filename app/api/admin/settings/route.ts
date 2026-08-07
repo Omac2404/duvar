@@ -10,8 +10,10 @@ import {
 import {
   getFaq,
   getInstagram,
+  getMarquee,
   type FaqItem,
   type InstagramSetting,
+  type MarqueeSetting,
 } from "../../../lib/server/content";
 import { isAdmin } from "../../../lib/server/session";
 import { bad } from "../../../lib/server/validate";
@@ -27,6 +29,7 @@ export async function GET() {
     aiEnabled: await getSetting(db, "aiEnabled", false),
     faq: await getFaq(db),
     instagram: await getInstagram(db),
+    marquee: await getMarquee(db),
   });
 }
 
@@ -40,6 +43,7 @@ export async function PUT(req: Request) {
     aiEnabled?: boolean;
     faq?: FaqItem[];
     instagram?: InstagramSetting;
+    marquee?: MarqueeSetting;
   };
   const db = await getDb();
   if (body.mail !== undefined) {
@@ -68,6 +72,11 @@ export async function PUT(req: Request) {
     await setSetting(db, "instagram", {
       text: String(body.instagram?.text ?? "").slice(0, 60),
       url: String(body.instagram?.url ?? "").slice(0, 300),
+    });
+  if (body.marquee !== undefined)
+    await setSetting(db, "marquee", {
+      text: String(body.marquee?.text ?? "").slice(0, 200),
+      seconds: Math.min(300, Math.max(5, Number(body.marquee?.seconds) || 36)),
     });
   return Response.json({ ok: true });
 }

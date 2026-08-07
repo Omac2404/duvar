@@ -52,6 +52,7 @@ import {
   type ContactMessage,
   type FaqItem,
   type InstagramSetting,
+  type MarqueeSetting,
   type SponsorCampaign,
 } from "../lib/api";
 import {
@@ -452,6 +453,10 @@ export default function AdminPage() {
   const [insta, setInsta] = useState<InstagramSetting>({ text: "", url: "" });
   const [instaSaved, setInstaSaved] = useState(false);
 
+  // Kayan şerit (Ayarlar) — duvardaki bilgi bandının yazısı ve hızı
+  const [marq, setMarq] = useState<MarqueeSetting>({ text: "", seconds: 36 });
+  const [marqSaved, setMarqSaved] = useState(false);
+
   // Arama alanları — üyeler (isim/e-posta) ve üye manifestleri (kod/rumuz)
   const [mSearch, setMSearch] = useState("");
   const [mSort, setMSort] = useState<"new" | "old">("new");
@@ -528,6 +533,7 @@ export default function AdminPage() {
         setAiEnabled(!!s.aiEnabled);
         setFaq(s.faq ?? []);
         setInsta(s.instagram ?? { text: "", url: "" });
+        setMarq(s.marquee ?? { text: "", seconds: 36 });
       }
       setReady(true);
     });
@@ -2502,6 +2508,71 @@ export default function AdminPage() {
                   Kaydet
                 </button>
                 {instaSaved && (
+                  <span className="text-sm font-medium text-emerald-600">
+                    ✓ Kaydedildi
+                  </span>
+                )}
+              </div>
+            </section>
+
+            {/* ── Kayan şerit — duvardaki bilgi bandı ── */}
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-neutral-700">
+                🎞️ Kayan Şerit
+              </h2>
+              <p className="mt-1 text-xs text-neutral-400">
+                Duvarda arama panelinin üstünde kayan bilgi yazısı. Yazıyı boş
+                bırakırsan şerit tamamen gizlenir.
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_220px]">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-neutral-500">
+                    Yazı
+                  </span>
+                  <input
+                    className={inputCls}
+                    value={marq.text}
+                    maxLength={200}
+                    placeholder="Tüm manifestlerin yerleri gece 12'de karıştırılır"
+                    onChange={(e) => {
+                      setMarqSaved(false);
+                      setMarq((m) => ({ ...m, text: e.target.value }));
+                    }}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-neutral-500">
+                    Kayma hızı — tur {marq.seconds} sn (küçük = hızlı)
+                  </span>
+                  <input
+                    type="range"
+                    min={5}
+                    max={120}
+                    value={marq.seconds}
+                    onChange={(e) => {
+                      setMarqSaved(false);
+                      setMarq((m) => ({
+                        ...m,
+                        seconds: Number(e.target.value),
+                      }));
+                    }}
+                    className="mt-3 w-full cursor-pointer accent-amber-500"
+                  />
+                </label>
+              </div>
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void adminSaveSettings({ marquee: marq }).then((r) => {
+                      if (r.ok) setMarqSaved(true);
+                    });
+                  }}
+                  className="cursor-pointer rounded-xl bg-emerald-500 px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-600"
+                >
+                  Kaydet
+                </button>
+                {marqSaved && (
                   <span className="text-sm font-medium text-emerald-600">
                     ✓ Kaydedildi
                   </span>

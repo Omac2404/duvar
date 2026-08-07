@@ -14,6 +14,20 @@ export const DEFAULT_INSTAGRAM: InstagramSetting = {
   url: "",
 };
 
+// Duvardaki kayan bilgi şeridi — yazı boşsa şerit gizlenir
+export type MarqueeSetting = { text: string; seconds: number };
+
+export const DEFAULT_MARQUEE: MarqueeSetting = {
+  text: "Tüm manifestlerin yerleri gece 12'de karıştırılır",
+  seconds: 36,
+};
+
+export async function getMarquee(p: Pool): Promise<MarqueeSetting> {
+  const m = { ...DEFAULT_MARQUEE, ...(await getSetting(p, "marquee", {})) };
+  m.seconds = Math.min(300, Math.max(5, Number(m.seconds) || 36));
+  return m;
+}
+
 // İlk kurulum içeriği — admin İçerik sekmesinden özgürce değiştirilir
 export const DEFAULT_FAQ: FaqItem[] = [
   {
