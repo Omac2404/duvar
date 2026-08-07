@@ -68,6 +68,10 @@ export function toSponsorPub(r: SponsorRow): SponsorPub {
   return {
     id: r.id,
     brand: r.name,
+    startLabel: trDate(
+      r.start_ts ? new Date(Number(r.start_ts)) : new Date(r.created_at),
+    ),
+    endLabel: r.end_ts ? trDate(new Date(Number(r.end_ts))) : "",
     label: String(c.label),
     labelBg: String(c.labelBg),
     labelColor: String(c.labelColor),

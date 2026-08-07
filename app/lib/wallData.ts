@@ -56,6 +56,8 @@ export type SponsorPub = {
   linkUrl: string; // buton hedefi (boş → buton yok)
   linkLabel: string;
   logo: string; // görsel adresi (/api/sponsors/N/logo ya da doğrudan yol)
+  startLabel: string; // kampanya başlangıcı (okunur tarih)
+  endLabel: string; // kampanya bitişi (boş → belirtilmemiş)
 };
 
 export function sponsorGradCss(

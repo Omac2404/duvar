@@ -1313,8 +1313,15 @@ function ManifestPopup({
     const sx = origin.w / popW;
     const sy = origin.h / (395 * k);
     const off = (origin.h / 395) * 82.5; // gövde merkez ofseti (ekran px)
-    // Mobilde zarf orta-altta açılır; mektup orta-üste doğru çıkar
-    const dropY = window.innerWidth <= 520 ? Math.round(vh * 0.1) : 0;
+    // Mobilde zarf orta-altta açılır; mektup orta-üste doğru çıkar.
+    // Masaüstünde sponsor zarfı da biraz aşağıda açılır: mektubu daha
+    // uzun olduğundan üst kenarı ekranın tepesine dayanmasın
+    const dropY =
+      window.innerWidth <= 520
+        ? Math.round(vh * 0.1)
+        : envelope.sponsored
+          ? Math.round(vh * 0.09)
+          : 0;
     const rad = (envelope.rotation * Math.PI) / 180;
     // Duvardaki süs, zarf genişliğinin ~%16'sı. Popup süsü bunun 1/sx katı
     // olur ki zarf küçülünce süs duvardakiyle aynı boyuta insin.
@@ -1327,7 +1334,7 @@ function ManifestPopup({
       dx: origin.cx - vw / 2 + off * Math.sin(rad),
       dy: origin.cy - vh / 2 - off * Math.cos(rad),
     };
-  }, [origin, envelope.rotation]);
+  }, [origin, envelope.rotation, envelope.sponsored]);
 
   // Hedef: kağıdın üst kenarı zarf içindeyken yaka üçgeninin üst bölgesinde
   // (≈230k) dursun — kapak kapanırken bu kısım görünür kalır
@@ -1583,23 +1590,73 @@ function ManifestPopup({
                 </span>
               </span>
             )}
-            <span className="flex items-center gap-1.5 text-[11px] opacity-90 max-[520px]:text-[9.5px] max-[520px]:gap-1">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-4 w-4 max-[520px]:h-3.5 max-[520px]:w-3.5"
-              >
-                <path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8" />
-                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-                <path d="M19 16v6" />
-                <path d="M16 19h6" />
-              </svg>
-              {envelope.date}
-            </span>
+            {envelope.sponsored && envelope.sponsor ? (
+              // Kampanya tarihleri — başlangıç her zaman, bitiş verildiyse
+              <>
+                <span className="text-[8.5px] font-semibold uppercase tracking-[0.16em] opacity-75 max-[520px]:text-[7.5px]">
+                  Kampanya başlangıcı
+                </span>
+                <span className="flex items-center gap-1.5 text-[11px] opacity-90 max-[520px]:text-[9.5px] max-[520px]:gap-1">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-4 w-4 max-[520px]:h-3.5 max-[520px]:w-3.5"
+                  >
+                    <path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8" />
+                    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                    <path d="M19 16v6" />
+                    <path d="M16 19h6" />
+                  </svg>
+                  {envelope.sponsor.startLabel}
+                </span>
+                {envelope.sponsor.endLabel && (
+                  <>
+                    <span className="mt-1 text-[8.5px] font-semibold uppercase tracking-[0.16em] opacity-75 max-[520px]:text-[7.5px]">
+                      Kampanya bitişi
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[11px] opacity-90 max-[520px]:text-[9.5px] max-[520px]:gap-1">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="h-4 w-4 max-[520px]:h-3.5 max-[520px]:w-3.5"
+                      >
+                        <path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8" />
+                        <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                        <path d="m17 17 5 5" />
+                        <path d="m22 17-5 5" />
+                      </svg>
+                      {envelope.sponsor.endLabel}
+                    </span>
+                  </>
+                )}
+              </>
+            ) : (
+              <span className="flex items-center gap-1.5 text-[11px] opacity-90 max-[520px]:text-[9.5px] max-[520px]:gap-1">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-4 w-4 max-[520px]:h-3.5 max-[520px]:w-3.5"
+                >
+                  <path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8" />
+                  <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                  <path d="M19 16v6" />
+                  <path d="M16 19h6" />
+                </svg>
+                {envelope.date}
+              </span>
+            )}
             {!envelope.sponsored && (
               <>
                 <span className="h-px w-full bg-current opacity-25" />

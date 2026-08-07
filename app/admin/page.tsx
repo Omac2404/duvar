@@ -190,6 +190,8 @@ function pendingRewards(m: MemberManifest): string[] {
 const BLANK_SPONSOR: SponsorCampaign = {
   id: 0,
   brand: "",
+  startLabel: "",
+  endLabel: "",
   label: "Sponsorlu",
   labelBg: "#f97316",
   labelColor: "#ffffff",
@@ -567,6 +569,14 @@ export default function AdminPage() {
     await adminDeleteSponsor(id).catch(() => null);
     setSpDelId(null);
     if (spEdit?.id === id) setSpEdit(null);
+    setSponsors(await adminSponsors());
+  }
+
+  // Durdur / devam ettir — kampanyayı silmeden yayından alıp geri getirir
+  async function toggleSponsor(c: SponsorCampaign) {
+    await adminSaveSponsor({ ...c, active: !c.active }).catch(() => null);
+    // Aynı kampanya düzenleyicide açıksa bayrağı orada da güncelle
+    if (spEdit?.id === c.id) patchSp({ active: !c.active });
     setSponsors(await adminSponsors());
   }
 
@@ -1763,6 +1773,25 @@ export default function AdminPage() {
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
+                          {c.active ? (
+                            <button
+                              type="button"
+                              onClick={() => void toggleSponsor(c)}
+                              title="Zarflar duvardan kalkar; kampanya ve metrikler silinmez"
+                              className="cursor-pointer rounded-full border border-amber-200 bg-amber-50 px-3.5 py-1.5 text-xs font-semibold text-amber-600 transition-colors hover:bg-amber-100"
+                            >
+                              ⏸ Durdur
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void toggleSponsor(c)}
+                              title="Zarflar duvara geri gelir (tarih penceresi de uygunsa)"
+                              className="cursor-pointer rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-xs font-semibold text-emerald-600 transition-colors hover:bg-emerald-100"
+                            >
+                              ▶ Devam Ettir
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
