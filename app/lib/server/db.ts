@@ -437,6 +437,24 @@ export async function setSetting(p: Pool, key: string, value: unknown) {
   );
 }
 
+// Etkin yıl — admin Ayarlar'daki yıl simülasyonu doluysa onu, yoksa
+// gerçek yılı döndürür. Yıllık manifest hakları ve panel/duvar varsayılan
+// yılı bunu okur; simülasyon 2027 davranışını canlıya çıkmadan test ettirir
+export async function effectiveYear(p: Pool): Promise<number> {
+  const y = Number(await getSetting(p, "simYear", 0));
+  return y >= 2020 && y <= 2100 ? y : new Date().getFullYear();
+}
+
+// Etkin yıla damgalanmış zaman: gerçek yıl simüle edilenle aynıysa şimdi;
+// değilse aynı ay/gün-saat, yılı değiştirilmiş hali
+export function stampForYear(y: number): number {
+  const now = new Date();
+  if (now.getFullYear() === y) return now.getTime();
+  const d = new Date(now);
+  d.setFullYear(y);
+  return d.getTime();
+}
+
 export type MailSettings = {
   host: string;
   port: number;

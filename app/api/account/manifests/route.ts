@@ -3,7 +3,12 @@
 // işler ama sayaçları (şans/tebrik/görüntülenme) duvar uçlarına bırakır:
 // mevcut manifestte sayaçlar DB'deki değerinde kalır, yenisinde 0 başlar.
 
-import { getDb, trDate } from "../../../lib/server/db";
+import {
+  effectiveYear,
+  getDb,
+  stampForYear,
+  trDate,
+} from "../../../lib/server/db";
 import { sessionUserId } from "../../../lib/server/session";
 import { bad, validManifestCode } from "../../../lib/server/validate";
 
@@ -31,7 +36,6 @@ export async function PUT(req: Request) {
   if (!Array.isArray(manifests)) return bad("Geçersiz istek.");
 
   // Doğrulamalar — client kurallarıyla aynı
-  const perYear = new Map<number, number>();
   const codes = new Set<string>();
   for (const m of manifests) {
     if (!m || !validManifestCode(m.code ?? "")) return bad("Geçersiz manifest kodu.");
@@ -42,21 +46,43 @@ export async function PUT(req: Request) {
     const text = (m.manifest ?? "").trim();
     if (text.length < 10) return bad("Manifest en az 10 karakter olmalı.");
     if (text.length > 300) return bad("Manifest en fazla 300 karakter olabilir.");
-    const y = new Date(m.ts).getFullYear();
-    perYear.set(y, (perYear.get(y) ?? 0) + 1);
   }
-  for (const [, n] of perYear)
-    if (n > QUOTA) return bad(`Yıl başına en fazla ${QUOTA} manifest hakkın var.`);
 
   const db = await getDb();
+  // Yıllık hak kuralları: yeni manifest yalnızca etkin (içinde bulunulan
+  // ya da simüle edilen) yıla yazılır ve o yıla damgalanır; geçmiş yıl
+  // manifestleri korunur ya da silinir — silmek geçmiş yıla slot açmaz
+  const nowY = await effectiveYear(db);
   const client = await db.connect();
   try {
     await client.query("BEGIN");
     const existing = await client.query(
-      "SELECT code FROM manifests WHERE user_id = $1",
+      "SELECT code, ts FROM manifests WHERE user_id = $1",
       [uid],
     );
     const mine = new Set(existing.rows.map((r) => r.code as string));
+    // Kota, istemcinin gönderdiği ts'e değil sunucu gerçeğine göre sayılır:
+    // mevcut manifest DB'deki yılında kalır, yenisi etkin yıla damgalanır
+    const yearOf = new Map(
+      existing.rows.map((r) => [
+        r.code as string,
+        new Date(Number(r.ts)).getFullYear(),
+      ]),
+    );
+    const perYear = new Map<number, number>();
+    for (const m of manifests) {
+      const y = yearOf.get(m.code) ?? nowY;
+      perYear.set(y, (perYear.get(y) ?? 0) + 1);
+    }
+    for (const [y, n] of perYear)
+      if (n > QUOTA) {
+        await client.query("ROLLBACK");
+        return bad(
+          y === nowY
+            ? `${y} yılı için ${QUOTA} manifest hakkın doldu.`
+            : `${y} yılına yeni manifest yazılamaz.`,
+        );
+      }
 
     // Listeden çıkanlar silinir
     for (const code of mine)
@@ -98,6 +124,9 @@ export async function PUT(req: Request) {
           await client.query("ROLLBACK");
           return bad("Bu kod kullanımda, sayfayı yenileyip tekrar dene.");
         }
+        // Yeni manifest her zaman etkin yıla damgalanır (istemcinin
+        // gönderdiği ts/tarih dikkate alınmaz — geçmiş yıla yazılamaz)
+        const ts = stampForYear(nowY);
         await client.query(
           `INSERT INTO manifests (code, user_id, name, manifest, date_label, ts,
              luck, cheers, views, color_idx, sticker, special, bottled, boxed,
@@ -108,8 +137,8 @@ export async function PUT(req: Request) {
             uid,
             m.name.trim(),
             m.manifest.trim(),
-            m.date || trDate(),
-            m.ts || Date.now(),
+            trDate(new Date(ts)),
+            ts,
             m.colorIdx ?? 0,
             m.sticker ?? null,
             m.special ?? null,

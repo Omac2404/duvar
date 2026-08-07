@@ -117,6 +117,7 @@ export type PublicSettings = {
   smtpConfigured: boolean;
   instagram: InstagramSetting;
   marquee: MarqueeSetting;
+  year: number; // etkin yıl (admin yıl simülasyonu doluysa o)
 };
 
 export async function fetchSettings(): Promise<PublicSettings> {
@@ -131,6 +132,7 @@ export async function fetchSettings(): Promise<PublicSettings> {
       smtpConfigured: false,
       instagram: { text: "", url: "" },
       marquee: { text: "", seconds: 36 },
+      year: new Date().getFullYear(),
     };
   }
 }
@@ -365,6 +367,7 @@ export type AdminSettings = {
   faq: FaqItem[];
   instagram: InstagramSetting;
   marquee: MarqueeSetting;
+  simYear: number; // 0 = kapalı (gerçek yıl)
 };
 
 export async function adminSettings(): Promise<AdminSettings | null> {
@@ -382,6 +385,7 @@ export function adminSaveSettings(patch: {
   faq?: FaqItem[];
   instagram?: InstagramSetting;
   marquee?: MarqueeSetting;
+  simYear?: number;
 }) {
   return post<{ ok: boolean }>("/api/admin/settings", patch, "PUT");
 }

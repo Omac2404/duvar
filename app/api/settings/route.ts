@@ -1,6 +1,11 @@
 // ── Herkese açık ayarlar — duvar ve üye ekranı okur ──────────────────────
 
-import { getDb, getMailSettings, getSetting } from "../../lib/server/db";
+import {
+  effectiveYear,
+  getDb,
+  getMailSettings,
+  getSetting,
+} from "../../lib/server/db";
 import { getInstagram, getMarquee } from "../../lib/server/content";
 import { smtpConfigured } from "../../lib/server/mailer";
 
@@ -14,5 +19,6 @@ export async function GET() {
     smtpConfigured: await smtpConfigured(db),
     instagram: await getInstagram(db),
     marquee: await getMarquee(db),
+    year: await effectiveYear(db),
   });
 }

@@ -31,6 +31,7 @@ import {
   type MemberManifest,
   type User,
 } from "../lib/auth";
+import { fetchSettings } from "../lib/api";
 
 const inputCls =
   "w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm " +
@@ -1481,6 +1482,11 @@ export default function PanelPage() {
   const [setErr, setSetErrMsg] = useState("");
   const [setOk, setSetOk] = useState("");
 
+  // Etkin yıl (admin yıl simülasyonu dahil) + panelde gezilen yıl.
+  // viewYear null iken etkin yıl gösterilir; oklar geçmiş yıllara götürür
+  const [nowYear, setNowYear] = useState(new Date().getFullYear());
+  const [viewYear, setViewYear] = useState<number | null>(null);
+
   useEffect(() => {
     currentUser().then((u) => {
       if (!u) {
@@ -1490,6 +1496,9 @@ export default function PanelPage() {
       setUser(u);
       setNewName(u.name);
       setReady(true);
+    });
+    fetchSettings().then((s) => {
+      if (s.year) setNowYear(s.year);
     });
   }, []);
 
@@ -1507,16 +1516,20 @@ export default function PanelPage() {
     const text = draft.trim();
     const nm = draftName.trim();
     if (text.length < 10 || nm.length < 2) return;
+    // Yeni manifest etkin yıla damgalanır (yıl simülasyonunda o yıl);
+    // sunucu da aynı damgayı basar
+    const stamp = new Date();
+    stamp.setFullYear(nowYear);
     const m: MemberManifest = {
       code: draftCode,
       name: nm,
       manifest: text,
-      date: new Date().toLocaleDateString("tr-TR", {
+      date: stamp.toLocaleDateString("tr-TR", {
         day: "numeric",
         month: "long",
         year: "numeric",
       }),
-      ts: Date.now(),
+      ts: stamp.getTime(),
       luck: 0,
       cheers: 0,
       views: 0,
@@ -1643,14 +1656,28 @@ export default function PanelPage() {
 
   const avatarColor = PANEL_COLORS[user.name.length % PANEL_COLORS.length];
 
-  // Yıllık manifest hakkı: her üyeye yıl başına 3 manifest. Silinen
-  // manifest slotu boşaltır; 2027'de 3 yeni hak tanımlanır
-  const QUOTA_YEAR = 2026;
+  // Yıllık manifest hakkı: her üyeye yıl başına 3 manifest. Yeni manifest
+  // yalnızca etkin yıla yazılır; içinde bulunulan yılda silinen manifest
+  // slotu boşaltır. Geçmiş yıl manifestleri korunur ya da silinir —
+  // silmek geçmiş yıla slot açmaz (sunucu da aynı kuralı uygular)
   const QUOTA = 3;
   const usedQuota = user.manifests.filter(
-    (m) => new Date(m.ts).getFullYear() === QUOTA_YEAR,
+    (m) => new Date(m.ts).getFullYear() === nowYear,
   ).length;
   const quotaLeft = Math.max(0, QUOTA - usedQuota);
+
+  // Panelde gezilebilir yıllar: üyenin manifest yılları + etkin yıl
+  const years = [
+    ...new Set([
+      ...user.manifests.map((m) => new Date(m.ts).getFullYear()),
+      nowYear,
+    ]),
+  ].sort((a, b) => a - b);
+  const viewY = viewYear ?? nowYear;
+  const viewIdx = years.indexOf(viewY);
+  const yearManifests = user.manifests.filter(
+    (m) => new Date(m.ts).getFullYear() === viewY,
+  );
 
   return (
     <>
@@ -1835,61 +1862,101 @@ export default function PanelPage() {
         {/* Manifestlerim */}
         {tab === "manifests" && (
         <section className="mt-5">
-          {/* Mobilde başlık ortalı, hak rozeti hemen altında, buton en altta */}
+          {/* Mobilde başlık ortalı, yıl okları hemen altında, hak rozeti
+              sonra, buton en altta. Masaüstünde oklar başlığın solunda
+              (ss103) */}
           <div className="mb-3.5 flex flex-wrap items-center gap-3 max-[520px]:flex-col max-[520px]:gap-2">
+            {/* Yıl okları — üyenin yılları arasında ileri/geri */}
+            {years.length > 1 && (
+              <div className="flex items-center gap-1.5 max-[520px]:order-2">
+                <button
+                  type="button"
+                  aria-label="Önceki yıl"
+                  disabled={viewIdx <= 0}
+                  onClick={() => setViewYear(years[viewIdx - 1])}
+                  className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 shadow-sm transition-colors hover:bg-neutral-50 disabled:cursor-default disabled:opacity-30"
+                >
+                  ←
+                </button>
+                <button
+                  type="button"
+                  aria-label="Sonraki yıl"
+                  disabled={viewIdx >= years.length - 1}
+                  onClick={() => setViewYear(years[viewIdx + 1])}
+                  className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 shadow-sm transition-colors hover:bg-neutral-50 disabled:cursor-default disabled:opacity-30"
+                >
+                  →
+                </button>
+              </div>
+            )}
             <h2
-              className="text-2xl font-bold text-neutral-800"
+              className="text-2xl font-bold text-neutral-800 max-[520px]:order-1"
               style={{ fontFamily: "var(--font-caveat)" }}
             >
-              2026 Manifestlerim
+              {viewY} Manifestlerim
             </h2>
-            <span
-              className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-                quotaLeft > 0
-                  ? "bg-amber-50 text-amber-600"
-                  : "bg-neutral-100 text-neutral-400"
-              }`}
-            >
-              {usedQuota}/{QUOTA} hak kullanıldı
-            </span>
-            <button
-              type="button"
-              onClick={openWrite}
-              disabled={quotaLeft === 0}
-              className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-neutral-800 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-neutral-700 active:scale-[0.98] disabled:cursor-default disabled:opacity-40 max-[520px]:ml-0 max-[520px]:mt-1"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-3.5 w-3.5"
+            {viewY === nowYear ? (
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold max-[520px]:order-3 ${
+                  quotaLeft > 0
+                    ? "bg-amber-50 text-amber-600"
+                    : "bg-neutral-100 text-neutral-400"
+                }`}
               >
-                <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
-                <path d="m15 5 4 4" />
-              </svg>
-              Yeni Manifest Yaz
-            </button>
+                {usedQuota}/{QUOTA} hak kullanıldı
+              </span>
+            ) : (
+              <span
+                className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-[11px] font-semibold text-neutral-400 max-[520px]:order-3"
+                title="Geçmiş yıla yeni manifest yazılamaz; mevcutlar korunur ya da silinir"
+              >
+                arşiv · yeni manifest yazılamaz
+              </span>
+            )}
+            {viewY === nowYear && (
+              <button
+                type="button"
+                onClick={openWrite}
+                disabled={quotaLeft === 0}
+                className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-neutral-800 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-neutral-700 active:scale-[0.98] disabled:cursor-default disabled:opacity-40 max-[520px]:order-4 max-[520px]:ml-0 max-[520px]:mt-1"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-3.5 w-3.5"
+                >
+                  <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+                  <path d="m15 5 4 4" />
+                </svg>
+                Yeni Manifest Yaz
+              </button>
+            )}
           </div>
 
-          {user.manifests.length === 0 ? (
+          {yearManifests.length === 0 ? (
             <div className="rounded-2xl border-2 border-dashed border-neutral-300 bg-white/60 px-6 py-12 text-center">
               <p className="text-4xl">✉️</p>
               <p
                 className="mt-2 text-2xl text-neutral-600"
                 style={{ fontFamily: "var(--font-caveat)" }}
               >
-                Henüz duvara asılmış bir manifestin yok
+                {viewY === nowYear
+                  ? "Henüz duvara asılmış bir manifestin yok"
+                  : `${viewY} yılına ait manifestin yok`}
               </p>
-              <p className="mt-1 text-sm text-neutral-400">
-                İlk manifestini yaz, zarfına koyalım ve duvara asalım.
-              </p>
+              {viewY === nowYear && (
+                <p className="mt-1 text-sm text-neutral-400">
+                  İlk manifestini yaz, zarfına koyalım ve duvara asalım.
+                </p>
+              )}
             </div>
           ) : (
             <div className="space-y-3.5">
-              {user.manifests.map((m) => (
+              {yearManifests.map((m) => (
                 <ManifestCard
                   key={m.code}
                   m={m}

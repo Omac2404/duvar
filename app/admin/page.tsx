@@ -457,6 +457,10 @@ export default function AdminPage() {
   const [marq, setMarq] = useState<MarqueeSetting>({ text: "", seconds: 36 });
   const [marqSaved, setMarqSaved] = useState(false);
 
+  // Yıl simülasyonu (Ayarlar) — 2027 davranışını test etmek için
+  const [simYear, setSimYear] = useState("");
+  const [simSaved, setSimSaved] = useState(false);
+
   // Arama alanları — üyeler (isim/e-posta) ve üye manifestleri (kod/rumuz)
   const [mSearch, setMSearch] = useState("");
   const [mSort, setMSort] = useState<"new" | "old">("new");
@@ -534,6 +538,7 @@ export default function AdminPage() {
         setFaq(s.faq ?? []);
         setInsta(s.instagram ?? { text: "", url: "" });
         setMarq(s.marquee ?? { text: "", seconds: 36 });
+        setSimYear(s.simYear ? String(s.simYear) : "");
       }
       setReady(true);
     });
@@ -2510,6 +2515,56 @@ export default function AdminPage() {
                 {instaSaved && (
                   <span className="text-sm font-medium text-emerald-600">
                     ✓ Kaydedildi
+                  </span>
+                )}
+              </div>
+            </section>
+
+            {/* ── Yıl simülasyonu — yıllık manifest haklarının testi ── */}
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-neutral-700">
+                🗓️ Yıl Simülasyonu (test)
+              </h2>
+              <p className="mt-1 text-xs text-neutral-400">
+                Site kendini girilen yıldaymış gibi davranır: üye panelinde o
+                yılın 3 manifest hakkı açılır, geçmiş yıllara yeni manifest
+                yazılamaz (mevcutlar korunur ya da silinir; silmek geçmiş
+                yıla slot açmaz). Boş bırak ve kaydet → gerçek yıla dönülür.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <input
+                  type="number"
+                  min={2020}
+                  max={2100}
+                  value={simYear}
+                  onChange={(e) => {
+                    setSimSaved(false);
+                    setSimYear(e.target.value);
+                  }}
+                  placeholder={`boş = gerçek yıl (${new Date().getFullYear()})`}
+                  className={`${inputCls} w-56`}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    void adminSaveSettings({
+                      simYear: Math.floor(Number(simYear)) || 0,
+                    }).then((r) => {
+                      if (r.ok) setSimSaved(true);
+                    });
+                  }}
+                  className="cursor-pointer rounded-xl bg-emerald-500 px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-600"
+                >
+                  Kaydet
+                </button>
+                {simSaved && (
+                  <span className="text-sm font-medium text-emerald-600">
+                    ✓ Kaydedildi
+                  </span>
+                )}
+                {simYear && (
+                  <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700">
+                    Simülasyon aktif: {simYear}
                   </span>
                 )}
               </div>

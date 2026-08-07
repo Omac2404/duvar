@@ -30,6 +30,7 @@ export async function GET() {
     faq: await getFaq(db),
     instagram: await getInstagram(db),
     marquee: await getMarquee(db),
+    simYear: await getSetting(db, "simYear", 0),
   });
 }
 
@@ -44,6 +45,7 @@ export async function PUT(req: Request) {
     faq?: FaqItem[];
     instagram?: InstagramSetting;
     marquee?: MarqueeSetting;
+    simYear?: number;
   };
   const db = await getDb();
   if (body.mail !== undefined) {
@@ -78,5 +80,10 @@ export async function PUT(req: Request) {
       text: String(body.marquee?.text ?? "").slice(0, 200),
       seconds: Math.min(300, Math.max(5, Number(body.marquee?.seconds) || 36)),
     });
+  if (body.simYear !== undefined) {
+    const y = Math.floor(Number(body.simYear)) || 0;
+    if (y !== 0 && (y < 2020 || y > 2100)) return bad("Geçersiz yıl.");
+    await setSetting(db, "simYear", y);
+  }
   return Response.json({ ok: true });
 }

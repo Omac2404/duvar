@@ -1982,10 +1982,16 @@ export default function Home() {
     text: "",
     seconds: 36,
   });
+  // Etkin yıl (yıl simülasyonu dahil) — duvar varsayılanı bu yılı gösterir
+  const [nowYear, setNowYear] = useState(2026);
   useEffect(() => {
     fetchSettings().then((s) => {
       setAds(s.ads);
       if (s.marquee) setMarquee(s.marquee);
+      if (s.year) {
+        setNowYear(s.year);
+        setFYear(s.year);
+      }
     });
   }, []);
   const [selected, setSelected] = useState<{
@@ -2048,9 +2054,11 @@ export default function Home() {
     [],
   );
 
+  // Filtre yılları: veritabanındaki yıllar + etkin yıl (yeni yılın ilk
+  // günü henüz manifest yokken de seçilebilir kalsın)
   const years = useMemo(
-    () => (meta?.years?.length ? meta.years : [2026]),
-    [meta],
+    () => [...new Set([...(meta?.years ?? []), nowYear])].sort((a, b) => a - b),
+    [meta, nowYear],
   );
 
   // Aktif filtreye uyan manifest sayısı (şişe ve kutular dahil)
