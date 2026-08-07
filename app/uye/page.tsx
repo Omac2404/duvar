@@ -568,6 +568,17 @@ export default function AuthPage() {
           {/* Google + mod değiştirici — kod ekranlarında gizli */}
           {(mode === "login" || mode === "register") && (
             <>
+              {/* Girişte üye ol'a giden mor buton — girişin hemen altında
+                  belirgin durur (ss104) */}
+              {mode === "login" && (
+                <button
+                  type="button"
+                  onClick={() => switchMode("register")}
+                  className="mt-3 w-full cursor-pointer rounded-xl bg-violet-600 py-2.5 text-sm font-semibold text-white transition-all hover:bg-violet-700 active:scale-[0.99]"
+                >
+                  Üye Ol
+                </button>
+              )}
               <div className="my-5 flex items-center gap-3">
                 <span className="h-px flex-1 bg-neutral-200" />
                 <span className="text-[11px] font-medium uppercase tracking-wider text-neutral-400">
@@ -588,31 +599,20 @@ export default function AuthPage() {
                   Google ile {mode === "login" ? "giriş yap" : "üye ol"}
                 </button>
               )}
-              <p className="mt-5 text-center text-sm text-neutral-500">
-                {mode === "login" ? (
-                  <>
-                    Hesabın yok mu?{" "}
-                    <button
-                      type="button"
-                      onClick={() => switchMode("register")}
-                      className="cursor-pointer font-semibold text-neutral-800 underline-offset-2 hover:underline"
-                    >
-                      Üye ol
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    Zaten üye misin?{" "}
-                    <button
-                      type="button"
-                      onClick={() => switchMode("login")}
-                      className="cursor-pointer font-semibold text-neutral-800 underline-offset-2 hover:underline"
-                    >
-                      Giriş yap
-                    </button>
-                  </>
-                )}
-              </p>
+              {/* Girişte mor Üye Ol butonu varken alttaki yazı gereksiz;
+                  yalnızca üye ol ekranında giriş yap bağlantısı kalır */}
+              {mode === "register" && (
+                <p className="mt-5 text-center text-sm text-neutral-500">
+                  Zaten üye misin?{" "}
+                  <button
+                    type="button"
+                    onClick={() => switchMode("login")}
+                    className="cursor-pointer font-semibold text-neutral-800 underline-offset-2 hover:underline"
+                  >
+                    Giriş yap
+                  </button>
+                </p>
+              )}
             </>
           )}
         </div>
