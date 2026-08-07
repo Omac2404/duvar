@@ -22,16 +22,20 @@ export async function GET() {
   });
 }
 
+// ts verilirse tek bildirim, verilmezse koda ait TÜM bildirimler silinir
+// ("Tut" akışı: manifest duvarda kalır, bildirimleri yok sayılır)
 export async function DELETE(req: Request) {
   if (!(await isAdmin())) return bad("Yetki yok.", 401);
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
   const ts = url.searchParams.get("ts");
-  if (!code || !ts) return bad("Eksik bilgi.");
+  if (!code) return bad("Eksik bilgi.");
   const db = await getDb();
-  await db.query("DELETE FROM reports WHERE code = $1 AND ts = $2", [
-    code,
-    Number(ts),
-  ]);
+  if (ts)
+    await db.query("DELETE FROM reports WHERE code = $1 AND ts = $2", [
+      code,
+      Number(ts),
+    ]);
+  else await db.query("DELETE FROM reports WHERE code = $1", [code]);
   return Response.json({ ok: true });
 }

@@ -1,8 +1,8 @@
 // ── Duvar sorguları — dilimli mimarinin ortak parçaları ──────────────────
 // Sıralama günlük tohumla deterministiktir: md5(seed || kod). Böylece
 // "duvarın N'inci zarfı hangisi?" sorusunu sunucu cevaplar; istemci
-// yalnızca görünür dilimi ister. Tohum her gece 02:00'da değişir
-// (istemcideki eski daySeed ile aynı formül).
+// yalnızca görünür dilimi ister. Tohum her gece 00:00'da (Türkiye saati,
+// UTC+3) değişir; istemcideki daySeed ile aynı formül.
 
 import type { Pool } from "pg";
 import type { MemberManifest } from "../auth";
@@ -15,7 +15,7 @@ import {
 } from "./sponsors";
 
 export function wallSeed(): string {
-  return String(Math.floor((Date.now() - 2 * 3600 * 1000) / 86400000));
+  return String(Math.floor((Date.now() + 3 * 3600 * 1000) / 86400000));
 }
 
 // Yıl/ay filtresi (0 = tümü) — tüm duvar sorguları aynı koşulu kullanır

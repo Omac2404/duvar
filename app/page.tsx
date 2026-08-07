@@ -2052,10 +2052,11 @@ export default function Home() {
     [meta],
   );
 
-  // Günlük karıştırma tohumu: her gece 02:00'da değişir. Sıralama satılmaz;
-  // tüm konumlar her gün bu tohumla rastgele yeniden dağıtılır
+  // Günlük karıştırma tohumu: her gece 00:00'da (Türkiye saati) değişir.
+  // Sıralama satılmaz; tüm konumlar her gün bu tohumla yeniden dağıtılır
+  // (sunucudaki wallSeed ile aynı formül)
   const daySeed = useMemo(
-    () => Math.floor((Date.now() - 2 * 3600 * 1000) / 86400000),
+    () => Math.floor((Date.now() + 3 * 3600 * 1000) / 86400000),
     [],
   );
 
@@ -2070,7 +2071,7 @@ export default function Home() {
   const filteredCount = meta?.total ?? 0;
 
   // Yerleşim: tamamen orantılı piksel konumları (zoom yok, ölçek yok).
-  // Konum sırası her gün 02:00'da daySeed ile rastgele karılır;
+  // Konum sırası her gece 00:00'da (TR) daySeed ile rastgele karılır;
   // filtre aktifken görünür zarflar baştan itibaren yeniden dizilir
   const layout = useMemo(() => {
     const m = makeLayoutMetrics(vwPx, cols);

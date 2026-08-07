@@ -784,8 +784,12 @@ export default function AdminPage() {
 
   // ── Onaylar ────────────────────────────────────────────────────────────
   const [confirmDelUser, setConfirmDelUser] = useState<User | null>(null);
-  const [confirmDelMan, setConfirmDelMan] =
-    useState<AdminManifestItem | null>(null);
+  // Gerekçeli manifest silme modalı — Manifestler sekmesinden (owner'lı)
+  // ya da Bildirilenler'deki Kaldır'dan (owner'sız) açılır
+  const [confirmDelMan, setConfirmDelMan] = useState<{
+    code: string;
+    owner?: string;
+  } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
 
   function toggleVerified(u: User) {
@@ -830,8 +834,16 @@ export default function AdminPage() {
       refreshManifests();
       reload();
       refreshModeration();
+      // Silinen manifeste ait ziyaretçi bildirimleri de düşer
+      void adminReports().then(setReports);
     });
     setConfirmDelMan(null);
+  }
+
+  // "Tut" — manifest duvarda kalır, koda ait tüm bildirimler yok sayılır
+  function keepReported(code: string) {
+    setReports((list) => list.filter((x) => x.code !== code));
+    void adminRemoveReport(code).then(() => adminReports().then(setReports));
   }
 
   // Şans gönderme — girilen miktar manifestin şansına eklenir
@@ -1666,8 +1678,10 @@ export default function AdminPage() {
 
             <p className="rounded-xl bg-red-50 px-4 py-2.5 text-xs leading-relaxed text-red-700">
               Ziyaretçilerin duvar popup&apos;larındaki &quot;Bildir&quot;
-              butonuyla işaretlediği manifestler. Kaldır, yalnızca bildirimi
-              siler; manifest duvarda kalır.
+              butonuyla işaretlediği manifestler. <b>Tut</b>: manifest duvarda
+              kalır, koda ait tüm bildirimler yok sayılır. <b>Kaldır</b>:
+              gerekçe seçilir, manifest duvardan silinir ve sahibine
+              bilgilendirme e-postası gönderilir.
             </p>
             {reports.length === 0 ? (
               <section className="rounded-2xl bg-white p-10 text-center text-sm text-neutral-400 shadow-sm">
@@ -1713,22 +1727,27 @@ export default function AdminPage() {
                           {r.date}
                         </td>
                         <td className={`${tdCls} text-right`}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void adminRemoveReport(r.code, r.ts).then(() =>
-                                adminReports().then(setReports),
-                              );
-                              setReports((list) =>
-                                list.filter(
-                                  (x) => !(x.code === r.code && x.ts === r.ts),
-                                ),
-                              );
-                            }}
-                            className="cursor-pointer rounded-full border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-500 transition-colors hover:border-red-300 hover:text-red-500"
-                          >
-                            Kaldır
-                          </button>
+                          <span className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => keepReported(r.code)}
+                              title="Manifest duvarda kalır; bu koda ait tüm bildirimler yok sayılır"
+                              className="cursor-pointer rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+                            >
+                              ✓ Tut
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDelReason("none");
+                                setConfirmDelMan({ code: r.code });
+                              }}
+                              title="Gerekçe seçilir; manifest silinir ve sahibine e-posta gider"
+                              className="cursor-pointer rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100"
+                            >
+                              🗑 Kaldır
+                            </button>
+                          </span>
                         </td>
                       </tr>
                     ))}
@@ -1751,7 +1770,8 @@ export default function AdminPage() {
                   <p className="mt-1 text-xs text-neutral-400">
                     Marka zarfları duvardaki zarfların arasına, seçtiğin
                     sıklıkla serpiştirilir; normal zarflardan ~%35 büyük
-                    görünür. Konumlar her gece 02:00&apos;da yeniden dağılır.
+                    görünür. Konumlar gece 12&apos;de tüm manifestlerle
+                    birlikte yeniden dağılır.
                   </p>
                 </div>
                 <button
@@ -3152,8 +3172,9 @@ export default function AdminPage() {
             </h3>
             <p className="mt-2 text-sm leading-relaxed text-neutral-500">
               <b className="text-neutral-700">{confirmDelMan.code}</b> kodlu
-              manifest ({confirmDelMan.owner} üyesinin) duvardan kaldırılacak
-              ve sahibine bilgilendirme e-postası gönderilecek.
+              manifest{confirmDelMan.owner ? ` (${confirmDelMan.owner} üyesinin)` : ""}{" "}
+              duvardan kaldırılacak ve sahibine bilgilendirme e-postası
+              gönderilecek.
             </p>
             <label className="mt-4 block">
               <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">

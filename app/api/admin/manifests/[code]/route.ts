@@ -75,6 +75,8 @@ export async function POST(
      WHERE code = $1 AND status = 'pending'`,
     [code],
   );
+  // Silinen manifeste ait ziyaretçi bildirimleri de listeden düşer
+  await db.query("DELETE FROM reports WHERE code = $1", [code]);
 
   let mailSent = false;
   if (owner.email) {

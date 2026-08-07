@@ -316,9 +316,12 @@ export async function adminReports(): Promise<Report[]> {
   return (await json<{ reports: Report[] }>(res)).reports;
 }
 
-export function adminRemoveReport(code: string, ts: number) {
+// ts verilmezse koda ait tüm bildirimler silinir ("Tut" akışı)
+export function adminRemoveReport(code: string, ts?: number) {
   return post<{ ok: boolean }>(
-    `/api/admin/reports?code=${encodeURIComponent(code)}&ts=${ts}`,
+    `/api/admin/reports?code=${encodeURIComponent(code)}${
+      ts !== undefined ? `&ts=${ts}` : ""
+    }`,
     undefined,
     "DELETE",
   );
