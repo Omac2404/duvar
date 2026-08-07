@@ -103,6 +103,18 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Şans/tebrik tekilliği: bir üye bir zarfa her tepkiden yalnızca bir kez
+-- verebilir. Birincil anahtar ikinci isteği reddeder, sayaç şişirilemez.
+-- (code'a yabancı anahtar konmaz: demo zarflar manifests'te yer almaz)
+CREATE TABLE IF NOT EXISTS manifest_reactions (
+  code TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (code, user_id, type)
+);
+CREATE INDEX IF NOT EXISTS manifest_reactions_user ON manifest_reactions (user_id);
+
 CREATE TABLE IF NOT EXISTS verification_codes (
   email TEXT PRIMARY KEY,
   code TEXT NOT NULL,

@@ -44,6 +44,20 @@ export function react(
   }).catch(() => {});
 }
 
+// Üyenin daha önce şans dilediği / tebrik ettiği zarf kodları — duvar
+// yıldızları bunlarla dolu başlar (girişsiz ziyaretçide iki liste de boş)
+export type MyReactions = { luck: Set<string>; cheer: Set<string> };
+
+export async function fetchMyReactions(): Promise<MyReactions> {
+  try {
+    const res = await fetch("/api/manifests/reactions");
+    const d = await json<{ luck: string[]; cheer: string[] }>(res);
+    return { luck: new Set(d.luck), cheer: new Set(d.cheer) };
+  } catch {
+    return { luck: new Set(), cheer: new Set() };
+  }
+}
+
 // ── Dilimli duvar ────────────────────────────────────────────────────────
 // Duvar verisi artık topluca inmez: meta (sayılar + şişe/kutu listeleri),
 // görünür bölge dilimleri ve sunucu taraflı kod arama.

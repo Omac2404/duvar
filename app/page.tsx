@@ -28,6 +28,7 @@ import {
   type Envelope,
 } from "./lib/wallData";
 import {
+  fetchMyReactions,
   fetchReportedCodes,
   fetchSettings,
   fetchWallMeta,
@@ -36,6 +37,7 @@ import {
   react as apiReact,
   submitReport,
   trackSponsor,
+  type MyReactions,
   type WallMeta,
 } from "./lib/api";
 
@@ -116,14 +118,25 @@ function toBottleData(env: Envelope, rot: number): BottleData {
   };
 }
 
+// Üyenin verdiği tepkiler sunucudan bir kez çekilip paylaşılır: zarf her
+// açıldığında yeniden istek atılmaz, yıldız dolu başlar. Bir üye bir zarfa
+// yalnızca bir kez şans dileyebilir; asıl sınır sunucudadır
+// (manifest_reactions birincil anahtarı), buradaki kopya arayüz içindir
+let myReactionsPromise: Promise<MyReactions> | null = null;
+function myReactions(): Promise<MyReactions> {
+  return (myReactionsPromise ??= fetchMyReactions());
+}
+
 // Şans dileği backend'e yazılır (demo zarflarında sunucu no-op döner,
 // sayaç oturumluk kalır) — panel ödül akışları duvardan test edilebilsin
 function persistLuck(code: string, delta: number) {
+  void myReactions().then((r) => r.luck.add(code));
   apiReact(code, "luck", delta);
 }
 
 // Tebrik de backend'e yazılır (demo zarflarında no-op)
 function persistCheer(code: string, delta: number) {
+  void myReactions().then((r) => r.cheer.add(code));
   apiReact(code, "cheer", delta);
 }
 
@@ -1069,6 +1082,13 @@ function LetterCard({
   useEffect(() => {
     currentUser().then((u) => setMember(!!u));
   }, []);
+  // Bu zarfa daha önce şans dilenmiş/tebrik edilmişse yıldız dolu başlar
+  useEffect(() => {
+    myReactions().then((r) => {
+      if (r.luck.has(info.code)) setWished(true);
+      if (r.cheer.has(info.code)) setCheered(true);
+    });
+  }, [info.code]);
   return (
     // relative sarmalayıcı: Bildir gerekçeleri kartın DIŞINDA sol altta
     // açılır (ss113) — kaydırma alanı kırpmasın diye kartın üstünde durur
@@ -1311,6 +1331,13 @@ function ManifestPopup({
   useEffect(() => {
     currentUser().then((u) => setMember(!!u));
   }, []);
+  // Bu zarfa daha önce şans dilenmiş/tebrik edilmişse yıldız dolu başlar
+  useEffect(() => {
+    myReactions().then((r) => {
+      if (r.luck.has(envelope.code)) setWished(true);
+      if (r.cheer.has(envelope.code)) setCheered(true);
+    });
+  }, [envelope.code]);
   // Kapak, mektup dışarıdayken arkada (1), mektup içerideyken önde (30) durur
   const [flapZ, setFlapZ] = useState(30);
   const closingRef = useRef(false);
