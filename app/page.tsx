@@ -928,13 +928,16 @@ function ReportButton({
   name,
   manifest,
   below = false,
+  outside = false,
 }: {
   code: string;
   name: string;
   manifest: string;
-  // true: seçenekler butonun (zarfın) altında yatay sırada açılır (ss66);
-  // false: butonun üstünde dikey sırada (mektup kağıdı içinde)
+  // below: seçenekler zarfın altında yatay sırada açılır (ss66);
+  // outside: mektup kartının DIŞINDA, kartın sol altında açılır (ss113) —
+  // en yakın relative atanın (LetterCard sarmalayıcısı) altına konumlanır
   below?: boolean;
+  outside?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [reported, setReported] = useState(false);
@@ -978,7 +981,11 @@ function ReportButton({
   ));
 
   return (
-    <span className="pointer-events-auto relative mt-0.5 flex flex-wrap items-center gap-1.5">
+    <span
+      className={`pointer-events-auto mt-0.5 flex flex-wrap items-center gap-1.5 ${
+        outside ? "" : "relative"
+      }`}
+    >
       <button
         type="button"
         onClick={(e) => {
@@ -1001,15 +1008,19 @@ function ReportButton({
         </svg>
         Bildir
       </button>
-      {/* Zarf popup'ında zarfın altında yatay sıra (ss66); mektup kağıdında
-          (şişe/kutu) akış içinde butonun altında açılır — üstteki tarih ve
-          görüntülenme satırlarının üzerine binmez (ss112) */}
+      {/* Zarf popup'ında zarfın altında yatay sıra (ss66); şişe/kutu
+          mektubunda kartın DIŞINDA sol altta (ss113) */}
       {open && below && (
         <span className="absolute left-0 top-full z-20 mt-6 flex items-center gap-1.5">
           {pills}
         </span>
       )}
-      {open && !below && (
+      {open && outside && (
+        <span className="absolute left-1 top-full z-20 mt-3 flex flex-wrap items-center gap-1.5">
+          {pills}
+        </span>
+      )}
+      {open && !below && !outside && (
         <span className="flex w-full flex-wrap gap-1.5 pt-1">{pills}</span>
       )}
     </span>
@@ -1059,6 +1070,9 @@ function LetterCard({
     currentUser().then((u) => setMember(!!u));
   }, []);
   return (
+    // relative sarmalayıcı: Bildir gerekçeleri kartın DIŞINDA sol altta
+    // açılır (ss113) — kaydırma alanı kırpmasın diye kartın üstünde durur
+    <div className="relative">
     <div className="max-h-[62vh] overflow-y-auto rounded-[4px] bg-[#fffdf5] px-8 py-7 shadow-[0_16px_44px_rgba(0,0,0,0.35)] max-[520px]:px-5 max-[520px]:py-5">
       <p className="font-hand text-[26px] text-neutral-800 max-[520px]:text-[22px]">
         {info.name}
@@ -1141,6 +1155,7 @@ function LetterCard({
             code={info.code}
             name={info.name}
             manifest={info.manifest}
+            outside
           />
         </div>
 
@@ -1262,6 +1277,7 @@ function LetterCard({
           )}
         </div>
       </div>
+    </div>
     </div>
   );
 }
