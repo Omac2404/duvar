@@ -1,0 +1,18 @@
+# Docker imajına girmeyecekler — bağımlılıklar imaj içinde kurulur,
+# build çıktısı imaj içinde üretilir
+node_modules
+.next
+out
+
+# Ortam değişkenleri: EasyPanel'de servis env'i olarak tanımlanır
+.env*
+!.env.example
+
+# Geliştirme/dokümantasyon dosyaları
+certificates
+gorseller
+scripts
+.git
+.claude
+*.tsbuildinfo
+npm-debug.log*

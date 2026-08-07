@@ -7,6 +7,10 @@ import type { MetadataRoute } from "next";
 import { getDb } from "./lib/server/db";
 import { getSeo, SITE_PAGES } from "./lib/server/content";
 
+// Her istekte DB'den okunur: admin sayfa seçimini değiştirince anında
+// yansır; build sırasında DB gerekmez
+export const dynamic = "force-dynamic";
+
 const BASE = "https://manifestduvari.com";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

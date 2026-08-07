@@ -7,6 +7,11 @@ import HeadCode from "./components/HeadCode";
 import SiteFooter from "./components/SiteFooter";
 import CookieConsent from "./components/CookieConsent";
 
+// Tüm sayfalar istek anında sunulur: SEO/head kodu/çerez metni/yasal
+// içerikler admin panelden değiştirilir değişmez yansır ve `next build`
+// sırasında veritabanı bağlantısı gerekmez (Docker imajı DB'siz derlenir)
+export const dynamic = "force-dynamic";
+
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
