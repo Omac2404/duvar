@@ -167,7 +167,7 @@ export default function SiteHeader({
                 .join("")}
             </span>
             <span className="max-w-32 truncate text-sm font-semibold text-neutral-700">
-              {me.name.split(" ")[0]}
+              Hesabım
             </span>
           </a>
         ) : (
@@ -250,9 +250,7 @@ export default function SiteHeader({
                     href={me ? "/panel" : "/uye"}
                     className="block rounded-xl bg-neutral-800 px-4 py-3 text-center text-[15px] font-bold text-white transition-colors hover:bg-neutral-700"
                   >
-                    {me
-                      ? `${me.name.split(" ")[0]} — Panelim`
-                      : "Giriş Yap / Üye Ol"}
+                    {me ? "Hesabım" : "Giriş Yap / Üye Ol"}
                   </a>
                 </nav>
                 {insta?.url && (
