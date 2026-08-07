@@ -2008,12 +2008,13 @@ export default function PanelPage() {
                 .filter((m) => m.luck >= s.threshold)
                 .sort((a, b) => b.luck - a.luck);
               // Önizlemede kazanan manifest, yoksa örnek değerler kullanılır
-              const pName = achieved[0]?.name ?? "Rumuz";
-              const pLuck = achieved[0]?.luck ?? s.threshold;
+              const pName = achieved[0]?.name ?? "Deniz";
               const unlocked = achieved.length > 0;
-              // Önizleme sayıları: zarf etaplarında barajın hemen üstünde
-              // örnek değerler gösterilir (ss48), şişe/kutu kazanan değeri alır
-              const shownLuck = i === 0 ? 32 : i === 1 ? 54 : pLuck;
+              // Önizleme sayıları: barajın hemen üstünde örnek değerler
+              // (zarf 32/54, şişe 164, kutu 251); kazanılmışsa gerçek değer
+              const sample = [32, 54, 164, 251][i];
+              const shownLuck =
+                i <= 1 ? sample : (achieved[0]?.luck ?? sample);
               return (
                 <article
                   key={s.title}
@@ -2083,7 +2084,7 @@ export default function PanelPage() {
                                     className="leading-none font-semibold text-[#8a6d33]"
                                     style={{ fontSize: 12 * (149 / 160) }}
                                   >
-                                    {pLuck.toLocaleString("tr-TR")}
+                                    {shownLuck.toLocaleString("tr-TR")}
                                   </p>
                                 </div>
                               </div>
@@ -2103,7 +2104,7 @@ export default function PanelPage() {
                         <GiftBoxVisual
                           size={158}
                           name={pName}
-                          luck={pLuck}
+                          luck={shownLuck}
                           sticker="✈️"
                           glow
                         />
