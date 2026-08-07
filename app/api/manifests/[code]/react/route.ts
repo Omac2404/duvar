@@ -3,7 +3,10 @@
 // (mevcut davranışla birebir). Test modunda +10'luk artışa izin verilir.
 
 import { getDb, getSetting } from "../../../../lib/server/db";
-import { checkLuckMilestones } from "../../../../lib/server/mailer";
+import {
+  checkCheerMilestones,
+  checkLuckMilestones,
+} from "../../../../lib/server/mailer";
 import { bad } from "../../../../lib/server/validate";
 
 const COLUMNS = { luck: "luck", cheer: "cheers", view: "views" } as const;
@@ -29,10 +32,13 @@ export async function POST(
     `UPDATE manifests SET ${col} = ${col} + $1 WHERE code = $2 RETURNING ${col} AS val`,
     [d, code],
   );
-  // Şans 20/50/150/250 eşiğini geçtiyse sahibine başarım maili (beklenmez)
-  if (type === "luck" && rows.length > 0) {
-    const newLuck = Number(rows[0].val);
-    void checkLuckMilestones(db, code, newLuck - d, newLuck).catch(() => {});
+  // Eşik bildirimleri (beklenmez): şans 20/50/150/250, tebrik her 100'de
+  if (rows.length > 0) {
+    const val = Number(rows[0].val);
+    if (type === "luck")
+      void checkLuckMilestones(db, code, val - d, val).catch(() => {});
+    else if (type === "cheer")
+      void checkCheerMilestones(db, code, val - d, val).catch(() => {});
   }
   return Response.json({ ok: (rowCount ?? 0) > 0, applied: d });
 }

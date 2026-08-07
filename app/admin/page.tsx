@@ -468,10 +468,12 @@ export default function AdminPage() {
     moderation: true,
     accountDeleted: true,
     verifyCode: true,
+    resetCode: true,
     milestone20: true,
     milestone50: true,
     milestone150: true,
     milestone250: true,
+    cheer100: true,
   });
 
   // Arama alanları — üyeler (isim/e-posta) ve üye manifestleri (kod/rumuz)
@@ -2532,12 +2534,20 @@ export default function AdminPage() {
                     },
                     {
                       key: "verifyCode",
-                      title: "Doğrulama kodu",
+                      title: "Üyelik doğrulama kodu",
                       desc:
-                        "Üye olurken ve şifre sıfırlarken e-postaya 6 haneli " +
-                        "kod gider. Kapatılırsa kod e-postayla gönderilmez, " +
-                        "ekrandaki demo bildirimine düşer; canlıda kapatılması " +
-                        "önerilmez.",
+                        "Yeni üye olurken e-postaya 6 haneli doğrulama kodu " +
+                        "gider. Kapatılırsa kod ekrandaki demo bildirimine " +
+                        "düşer; canlıda kapatılması önerilmez.",
+                      tone: "bg-amber-50/70",
+                    },
+                    {
+                      key: "resetCode",
+                      title: "Şifre sıfırlama kodu",
+                      desc:
+                        "Şifremi unuttum akışında e-postaya 6 haneli " +
+                        "sıfırlama kodu gider. Kapatılırsa kod ekrandaki demo " +
+                        "bildirimine düşer; canlıda kapatılması önerilmez.",
                       tone: "bg-amber-50/70",
                     },
                     {
@@ -2571,6 +2581,15 @@ export default function AdminPage() {
                         "Manifest 250 şansa ulaştığında sahibine hediye " +
                         "kutusu hakkı kazandığını bildiren mail gider.",
                       tone: "bg-emerald-50/60",
+                    },
+                    {
+                      key: "cheer100",
+                      title: "Tebrik: her 100 tebrikte",
+                      desc:
+                        "Gerçekleşen manifestin tebrik sayısı her 100'e " +
+                        "ulaştığında (100, 200, 300…) sahibine kutlama maili " +
+                        "gider; hayali için bir tur da biz tebrik ederiz.",
+                      tone: "bg-sky-50/60",
                     },
                   ] as const
                 ).map((row) => (

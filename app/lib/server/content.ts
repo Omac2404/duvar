@@ -243,21 +243,25 @@ export const DEFAULT_FAQ: FaqItem[] = [
 export type NotifySettings = {
   moderation: boolean; // manifest kaldırılınca sahibine bilgilendirme
   accountDeleted: boolean; // hesap silinince üyeye bilgilendirme
-  verifyCode: boolean; // üyelik/şifre doğrulama kodu e-postası
+  verifyCode: boolean; // üyelik doğrulama kodu e-postası
+  resetCode: boolean; // şifre sıfırlama kodu e-postası
   milestone20: boolean; // 20 şans: sticker hakkı maili
   milestone50: boolean; // 50 şans: özel renk hakkı maili
   milestone150: boolean; // 150 şans: şişe hakkı maili
   milestone250: boolean; // 250 şans: hediye kutusu hakkı maili
+  cheer100: boolean; // her 100 tebrikte kutlama maili
 };
 
 export const DEFAULT_NOTIFY: NotifySettings = {
   moderation: true,
   accountDeleted: true,
   verifyCode: true,
+  resetCode: true,
   milestone20: true,
   milestone50: true,
   milestone150: true,
   milestone250: true,
+  cheer100: true,
 };
 
 export async function getNotify(p: Pool): Promise<NotifySettings> {

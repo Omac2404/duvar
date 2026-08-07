@@ -270,10 +270,99 @@ export async function checkLuckMilestones(
   }
 }
 
+// ── Tebrik eşiği bildirimi — her 100 tebrikte bir kutlama maili ─────────
+function sendCheerMail(
+  p: Pool,
+  to: string,
+  name: string,
+  manifestText: string,
+  hundred: number,
+) {
+  const firstName = name.split(/\s+/)[0] || name;
+  const short =
+    manifestText.length > 120 ? manifestText.slice(0, 120) + "…" : manifestText;
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const html = `
+  <div style="margin:0;padding:32px 16px;background-color:#f4f1ea;font-family:Arial,Helvetica,sans-serif;">
+    <div style="max-width:440px;margin:0 auto;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 8px 28px rgba(0,0,0,0.08);">
+      <div style="height:6px;background-color:#FFE8CD;background-image:linear-gradient(90deg,#FFC8CD,#FFE8CD,#FFFFCD,#CDFFD8,#CDEAFF,#EBCDFF);"></div>
+      <div style="padding:28px 32px;">
+        <p style="margin:0;font-size:20px;font-weight:bold;color:#262626;">Manifest Duvar&#305;</p>
+        <p style="margin:14px 0 0;font-size:14px;line-height:1.7;color:#525252;">
+          Merhaba ${esc(firstName)}, harika haber! &#128079;
+        </p>
+        <p style="margin:12px 0 0;font-size:14px;line-height:1.7;color:#525252;">
+          Ger&#231;ekle&#351;en manifestin i&#231;in ald&#305;&#287;&#305;n tebrik say&#305;s&#305; <b>${hundred}</b>&#39;e ula&#351;t&#305;!
+        </p>
+        <div style="margin:18px 0;padding:14px 18px;background-color:#f0fdf4;border-left:4px solid #34d399;border-radius:8px;">
+          <p style="margin:0;font-size:13px;line-height:1.6;color:#78716c;font-style:italic;">&#8220;${esc(short)}&#8221;</p>
+        </div>
+        <p style="margin:0;font-size:14px;line-height:1.7;color:#525252;">
+          Bu hayali hem kurdu&#287;un hem de ger&#231;ekle&#351;tirdi&#287;in i&#231;in bir tur da biz tebrik ediyoruz; iyi ki yazd&#305;n, iyi ki ger&#231;ekle&#351;tirdin. &#128079;&#10024;
+        </p>
+        <div style="margin:22px 0 0;text-align:center;">
+          <a href="https://manifestduvari.com/panel" style="display:inline-block;padding:12px 28px;background-color:#059669;border-radius:12px;color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;">Manifestini G&#246;r</a>
+        </div>
+      </div>
+    </div>
+    <p style="max-width:440px;margin:14px auto 0;text-align:center;font-size:11px;color:#a3a3a3;">Manifest Duvar&#305; &#10024;</p>
+  </div>`;
+  return sendMail(
+    p,
+    to,
+    `Manifest Duvarı: Tebrik Sayın ${hundred}'e Ulaştı! 👏`,
+    `Merhaba ${firstName}, harika haber!\n\n` +
+      `Gerçekleşen manifestin için aldığın tebrik sayısı ${hundred}'e ulaştı:\n\n` +
+      `"${short}"\n\n` +
+      "Bu hayali hem kurduğun hem de gerçekleştirdiğin için bir tur da biz " +
+      "tebrik ediyoruz; iyi ki yazdın, iyi ki gerçekleştirdin. 👏✨\n\n" +
+      "https://manifestduvari.com/panel\n\nManifest Duvarı",
+    html,
+  );
+}
+
+// Tebrik artışı 100'lük eşiği geçtiyse kutlama maili gönderir (beklenmez)
+export async function checkCheerMilestones(
+  p: Pool,
+  code: string,
+  oldCheers: number,
+  newCheers: number,
+) {
+  if (Math.floor(newCheers / 100) <= Math.floor(oldCheers / 100)) return;
+  const { rows } = await p.query(
+    `SELECT m.manifest, m.is_demo, u.email, u.name
+     FROM manifests m JOIN users u ON u.id = m.user_id
+     WHERE m.code = $1`,
+    [code],
+  );
+  const r = rows[0];
+  if (!r || r.is_demo || !r.email) return;
+  if (!(await getNotify(p)).cheer100) return;
+  try {
+    await sendCheerMail(
+      p,
+      r.email,
+      r.name,
+      r.manifest,
+      Math.floor(newCheers / 100) * 100,
+    );
+  } catch {
+    // Mail hatası tebrik akışını etkilemez
+  }
+}
+
 // Doğrulama / şifre sıfırlama kodu — site kimliğiyle uyumlu HTML şablon.
-// Anahtar kapalıysa gönderilmez; akış demo bildirimine düşer (kod ekranda)
-export async function sendCodeMail(p: Pool, to: string, code: string) {
-  if (!(await getNotify(p)).verifyCode)
+// Anahtar kapalıysa gönderilmez; akış demo bildirimine düşer (kod ekranda).
+// purpose: üyelik doğrulaması mı şifre sıfırlama mı (ayrı anahtarlar)
+export async function sendCodeMail(
+  p: Pool,
+  to: string,
+  code: string,
+  purpose: "verify" | "reset" = "verify",
+) {
+  const notify = await getNotify(p);
+  if (!(purpose === "reset" ? notify.resetCode : notify.verifyCode))
     return { ok: false, error: "Bildirim kapalı (admin)" };
   const html = `
   <div style="margin:0;padding:32px 16px;background-color:#f4f1ea;font-family:Arial,Helvetica,sans-serif;">

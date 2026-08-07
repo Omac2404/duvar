@@ -56,7 +56,7 @@ export async function POST(req: Request) {
   );
 
   if (await smtpConfigured(db)) {
-    const m = await sendCodeMail(db, key, code);
+    const m = await sendCodeMail(db, key, code, requireUser ? "reset" : "verify");
     if (m.ok) return Response.json({ ok: true, sent: true });
     // Gerçek gönderim başarısız: neden + demo kod (akış kilitlenmesin)
     return Response.json({ ok: true, sent: false, error: m.error, demoCode: code });
