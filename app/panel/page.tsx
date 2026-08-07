@@ -951,7 +951,7 @@ function ShareModal({
 
   return (
     <div
-      className="fixed inset-0 z-[2100] overflow-y-auto bg-black/40 px-4 py-8"
+      className="fixed inset-0 z-[2100] grid place-items-center overflow-y-auto bg-black/40 px-4 py-6"
       onClick={onClose}
     >
       <div

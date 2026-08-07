@@ -238,6 +238,38 @@ export const DEFAULT_FAQ: FaqItem[] = [
   },
 ];
 
+// ── SEO ayarları — snippet, head kod enjeksiyonu, site haritası ─────────
+// Admin panelin Ayarlar sekmesindeki SEO bölümünden yönetilir
+
+export type SeoSettings = {
+  title: string; // Google snippet başlığı (<title>)
+  description: string; // snippet açıklaması (meta description)
+  headCode: string; // <head> içine enjekte edilen kod (Search Console vb.)
+  sitemapExclude: string[]; // site haritasından hariç tutulan sayfalar
+};
+
+// Site haritasına girebilecek herkese açık sayfalar
+export const SITE_PAGES = [
+  { path: "/", label: "Ana Sayfa" },
+  { path: "/merak-edilenler", label: "Merak Ettikleriniz" },
+  { path: "/bize-ulasin", label: "Bize Ulaşın" },
+  { path: "/uye", label: "Giriş / Üye Ol" },
+] as const;
+
+export const DEFAULT_SEO: SeoSettings = {
+  title: "Manifest Duvarı",
+  description:
+    "Hayalini bir zarfa yaz, koca duvara as; binlerce kişi sana şans " +
+    "dilesin. Manifest Duvarı: dileklerin paylaştıkça güçlendiği yer.",
+  headCode: "",
+  // Varsayılan: site haritasında yalnızca ana sayfa görünür
+  sitemapExclude: ["/merak-edilenler", "/bize-ulasin", "/uye"],
+};
+
+export async function getSeo(p: Pool): Promise<SeoSettings> {
+  return { ...DEFAULT_SEO, ...(await getSetting(p, "seo", {})) };
+}
+
 // Otomatik bildirim anahtarları — admin panelin Bildirimler sekmesinden
 // yönetilir; kapatılan bildirim maili sunucu tarafında hiç gönderilmez
 export type NotifySettings = {

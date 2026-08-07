@@ -56,6 +56,7 @@ import {
   type InstagramSetting,
   type MarqueeSetting,
   type NotifySettings,
+  type SeoSettings,
   type SponsorCampaign,
 } from "../lib/api";
 import {
@@ -647,6 +648,16 @@ export default function AdminPage() {
   const [simYear, setSimYear] = useState("");
   const [simSaved, setSimSaved] = useState(false);
 
+  // SEO (Ayarlar) — snippet, head kodu, favicon, site haritası
+  const [seoCfg, setSeoCfg] = useState<SeoSettings>({
+    title: "",
+    description: "",
+    headCode: "",
+    sitemapExclude: [],
+  });
+  const [favData, setFavData] = useState("");
+  const [seoSaved, setSeoSaved] = useState(false);
+
   // Genel Bakış istatistikleri — kartlar + 30 günlük seriler
   const [stat, setStat] = useState<AdminStats | null>(null);
 
@@ -743,6 +754,8 @@ export default function AdminPage() {
         setMarq(s.marquee ?? { text: "", seconds: 36 });
         setSimYear(s.simYear ? String(s.simYear) : "");
         if (s.notify) setNotify(s.notify);
+        if (s.seo) setSeoCfg(s.seo);
+        setFavData(s.favicon ?? "");
       }
       setReady(true);
     });
@@ -803,6 +816,23 @@ export default function AdminPage() {
     if (!r?.ok) return setSpErr(r?.error ?? "Kaydedilemedi.");
     setSponsors(await adminSponsors());
     setSpEdit(null);
+  }
+
+  // Favicon dosyası → 64px PNG data URL
+  function onFaviconFile(file: File) {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const cv = document.createElement("canvas");
+      cv.width = 64;
+      cv.height = 64;
+      cv.getContext("2d")!.drawImage(img, 0, 0, 64, 64);
+      setSeoSaved(false);
+      setFavData(cv.toDataURL("image/png"));
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => URL.revokeObjectURL(url);
+    img.src = url;
   }
 
   // Bildirim anahtarı — switch anında kaydedilir
@@ -2931,6 +2961,226 @@ export default function AdminPage() {
                 >
                   Sıfırla
                 </button>
+              </div>
+            </section>
+
+            {/* ── SEO — snippet, head kodu, favicon, site haritası ── */}
+            <section className="rounded-2xl bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-neutral-700">
+                🔍 SEO ve Site Görünümü
+              </h2>
+
+              {/* Google snippet önizleme */}
+              <div className="mt-3 rounded-xl border border-neutral-200 bg-white p-4">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
+                  Google önizleme
+                </p>
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border border-neutral-200 bg-neutral-50">
+                    {favData ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={favData} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src="/logo.png" alt="" className="h-5 w-5 object-contain" />
+                    )}
+                  </span>
+                  <span className="leading-tight">
+                    <span className="block text-sm text-neutral-800">
+                      Manifest Duvarı
+                    </span>
+                    <span className="block text-xs text-neutral-500">
+                      https://manifestduvari.com
+                    </span>
+                  </span>
+                </div>
+                <p className="mt-1.5 text-xl leading-snug text-[#1a0dab]">
+                  {seoCfg.title || "Manifest Duvarı"}
+                </p>
+                <p className="mt-1 text-sm leading-relaxed text-neutral-600">
+                  {seoCfg.description || "Site açıklaması burada görünecek…"}
+                </p>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                <label className="block">
+                  <span className="mb-1 flex items-center justify-between text-xs font-medium text-neutral-500">
+                    <span>Snippet başlığı</span>
+                    <span
+                      className={
+                        seoCfg.title.length > 60
+                          ? "font-semibold text-red-500"
+                          : ""
+                      }
+                    >
+                      {seoCfg.title.length}/60
+                    </span>
+                  </span>
+                  <input
+                    className={inputCls}
+                    value={seoCfg.title}
+                    maxLength={70}
+                    onChange={(e) => {
+                      setSeoSaved(false);
+                      setSeoCfg((s) => ({ ...s, title: e.target.value }));
+                    }}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 flex items-center justify-between text-xs font-medium text-neutral-500">
+                    <span>Snippet açıklaması</span>
+                    <span
+                      className={
+                        seoCfg.description.length > 160
+                          ? "font-semibold text-red-500"
+                          : ""
+                      }
+                    >
+                      {seoCfg.description.length}/160
+                    </span>
+                  </span>
+                  <textarea
+                    rows={2}
+                    className={inputCls}
+                    value={seoCfg.description}
+                    maxLength={200}
+                    onChange={(e) => {
+                      setSeoSaved(false);
+                      setSeoCfg((s) => ({ ...s, description: e.target.value }));
+                    }}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-neutral-500">
+                    Head kod enjeksiyonu (Search Console doğrulaması,
+                    analytics vb. — &lt;head&gt; içine eklenir)
+                  </span>
+                  <textarea
+                    rows={4}
+                    spellCheck={false}
+                    className={`${inputCls} font-mono text-xs`}
+                    placeholder={'<meta name="google-site-verification" content="..." />'}
+                    value={seoCfg.headCode}
+                    onChange={(e) => {
+                      setSeoSaved(false);
+                      setSeoCfg((s) => ({ ...s, headCode: e.target.value }));
+                    }}
+                  />
+                </label>
+              </div>
+
+              {/* Favicon */}
+              <div className="mt-4 flex flex-wrap items-center gap-4 rounded-xl bg-neutral-50 px-4 py-3">
+                <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-white">
+                  {favData ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={favData} alt="favicon" className="h-8 w-8 object-contain" />
+                  ) : (
+                    <span className="text-[10px] text-neutral-400">yok</span>
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-neutral-700">
+                    Favicon
+                  </p>
+                  <p className="text-xs text-neutral-400">
+                    Tarayıcı sekmesinde görünen ikon; kare PNG önerilir
+                    (64x64&apos;e küçültülür).
+                  </p>
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) onFaviconFile(f);
+                  }}
+                  className="cursor-pointer text-xs text-neutral-500 file:mr-3 file:cursor-pointer file:rounded-full file:border-0 file:bg-neutral-800 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-neutral-700"
+                />
+              </div>
+
+              {/* Site haritası */}
+              <div className="mt-4 rounded-xl bg-neutral-50 px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-neutral-700">
+                    Site haritası
+                  </p>
+                  <a
+                    href="/sitemap.xml"
+                    target="_blank"
+                    className="text-xs font-semibold text-sky-600 hover:underline"
+                  >
+                    /sitemap.xml → görüntüle
+                  </a>
+                </div>
+                <p className="mt-0.5 text-xs text-neutral-400">
+                  İşaretli sayfalar haritada listelenir; Search Console&apos;a
+                  https://manifestduvari.com/sitemap.xml adresini gönder.
+                </p>
+                <div className="mt-2.5 flex flex-wrap gap-x-5 gap-y-2">
+                  {(
+                    [
+                      { path: "/", label: "Ana Sayfa" },
+                      { path: "/merak-edilenler", label: "Merak Ettikleriniz" },
+                      { path: "/bize-ulasin", label: "Bize Ulaşın" },
+                      { path: "/uye", label: "Giriş / Üye Ol" },
+                    ] as const
+                  ).map((p) => (
+                    <label
+                      key={p.path}
+                      className={`flex items-center gap-2 text-sm ${
+                        p.path === "/"
+                          ? "text-neutral-400"
+                          : "cursor-pointer text-neutral-600"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={p.path === "/"}
+                        checked={
+                          p.path === "/" ||
+                          !seoCfg.sitemapExclude.includes(p.path)
+                        }
+                        onChange={(e) => {
+                          setSeoSaved(false);
+                          setSeoCfg((s) => ({
+                            ...s,
+                            sitemapExclude: e.target.checked
+                              ? s.sitemapExclude.filter((x) => x !== p.path)
+                              : [...s.sitemapExclude, p.path],
+                          }));
+                        }}
+                        className="h-4 w-4 accent-emerald-500"
+                      />
+                      {p.label}
+                      {p.path === "/" && (
+                        <span className="text-[10px]">(her zaman)</span>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void adminSaveSettings({
+                      seo: seoCfg,
+                      favicon: favData,
+                    }).then((r) => {
+                      if (r.ok) setSeoSaved(true);
+                    });
+                  }}
+                  className="cursor-pointer rounded-xl bg-emerald-500 px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-600"
+                >
+                  Kaydet
+                </button>
+                {seoSaved && (
+                  <span className="text-sm font-medium text-emerald-600">
+                    ✓ Kaydedildi
+                  </span>
+                )}
               </div>
             </section>
 

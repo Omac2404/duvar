@@ -12,10 +12,13 @@ import {
   getInstagram,
   getMarquee,
   getNotify,
+  getSeo,
+  SITE_PAGES,
   type FaqItem,
   type InstagramSetting,
   type MarqueeSetting,
   type NotifySettings,
+  type SeoSettings,
 } from "../../../lib/server/content";
 import { isAdmin } from "../../../lib/server/session";
 import { bad } from "../../../lib/server/validate";
@@ -34,6 +37,8 @@ export async function GET() {
     marquee: await getMarquee(db),
     simYear: await getSetting(db, "simYear", 0),
     notify: await getNotify(db),
+    seo: await getSeo(db),
+    favicon: await getSetting(db, "favicon", ""),
   });
 }
 
@@ -50,6 +55,8 @@ export async function PUT(req: Request) {
     marquee?: MarqueeSetting;
     simYear?: number;
     notify?: Partial<NotifySettings>;
+    seo?: Partial<SeoSettings>;
+    favicon?: string;
   };
   const db = await getDb();
   if (body.mail !== undefined) {
@@ -95,6 +102,25 @@ export async function PUT(req: Request) {
     for (const k of Object.keys(cur) as (keyof NotifySettings)[])
       if (body.notify[k] !== undefined) merged[k] = !!body.notify[k];
     await setSetting(db, "notify", merged);
+  }
+  if (body.seo !== undefined) {
+    const cur = await getSeo(db);
+    const known = new Set<string>(SITE_PAGES.map((p) => p.path));
+    await setSetting(db, "seo", {
+      title: String(body.seo.title ?? cur.title).slice(0, 70),
+      description: String(body.seo.description ?? cur.description).slice(0, 200),
+      headCode: String(body.seo.headCode ?? cur.headCode).slice(0, 5000),
+      sitemapExclude: (Array.isArray(body.seo.sitemapExclude)
+        ? body.seo.sitemapExclude.map(String)
+        : cur.sitemapExclude
+      ).filter((p) => known.has(p) && p !== "/"),
+    });
+  }
+  if (body.favicon !== undefined) {
+    const f = String(body.favicon);
+    if (f && !/^data:image\//.test(f)) return bad("Geçersiz favicon.");
+    if (f.length > 200_000) return bad("Favicon çok büyük (en fazla ~150KB).");
+    await setSetting(db, "favicon", f);
   }
   return Response.json({ ok: true });
 }

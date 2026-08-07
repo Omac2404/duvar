@@ -372,6 +372,16 @@ export type AdminSettings = {
   marquee: MarqueeSetting;
   simYear: number; // 0 = kapalı (gerçek yıl)
   notify: NotifySettings;
+  seo: SeoSettings;
+  favicon: string; // data URL (boş: varsayılan ikon)
+};
+
+// SEO ayarları (admin Ayarlar > SEO bölümü)
+export type SeoSettings = {
+  title: string;
+  description: string;
+  headCode: string;
+  sitemapExclude: string[];
 };
 
 // Otomatik bildirim anahtarları (admin Bildirimler sekmesi)
@@ -404,6 +414,8 @@ export function adminSaveSettings(patch: {
   marquee?: MarqueeSetting;
   simYear?: number;
   notify?: Partial<NotifySettings>;
+  seo?: Partial<SeoSettings>;
+  favicon?: string;
 }) {
   return post<{ ok: boolean }>("/api/admin/settings", patch, "PUT");
 }

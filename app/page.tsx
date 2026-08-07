@@ -2607,7 +2607,7 @@ export default function Home() {
       {(meta?.plain ?? 0) > 0 && (
         <div
           aria-live="polite"
-          className="fixed bottom-4 right-4 z-[1400] rounded-full bg-white/90 px-3.5 py-1.5 text-xs font-semibold text-neutral-600 shadow-lg backdrop-blur"
+          className="fixed bottom-5 right-5 z-[1400] rounded-full bg-white/95 px-5 py-2.5 text-base font-bold text-neutral-700 shadow-xl backdrop-blur"
         >
           {hundredLabel.toLocaleString("tr-TR")}&apos;ler
         </div>
