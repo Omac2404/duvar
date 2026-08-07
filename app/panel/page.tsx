@@ -645,9 +645,10 @@ async function drawShareImage(
     ctx.font = `700 86px ${hand}`;
     ctx.fillText("Manifest Duvarı", W / 2, 150);
   }
-  ctx.font = `500 42px ${hand}`;
-  ctx.fillStyle = "#6f6a5e";
-  ctx.fillText("manifestduvari.com", W / 2, 248);
+  // Site adresi — düz font, büyük ve siyah (el yazısı değil)
+  ctx.font = "700 52px Arial";
+  ctx.fillStyle = "#171717";
+  ctx.fillText("manifestduvari.com", W / 2, 254);
 
   const ex = 180;
   const ew = 720;
