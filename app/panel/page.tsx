@@ -1812,6 +1812,32 @@ export default function PanelPage() {
                   </label>
                 </div>
               )}
+              {/* Google hesabında şifre alanı yok; değişiklik Google'dan
+                  yapılır (ss109) */}
+              {user.provider === "google" && (
+                <p className="flex items-center gap-2 rounded-xl bg-neutral-50 px-4 py-3 text-sm text-neutral-500">
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0">
+                    <path
+                      fill="#4285F4"
+                      d="M23.5 12.3c0-.9-.1-1.5-.2-2.2H12v4.1h6.5c-.1 1.1-.8 2.7-2.4 3.8l3.6 2.8c2.2-2 3.8-5 3.8-8.5z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 24c3.2 0 6-1.1 8-2.9l-3.7-2.9c-1 .7-2.4 1.2-4.3 1.2-3.1 0-5.8-2.1-6.8-5l-3.9 2.9C3.3 21.3 7.3 24 12 24z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.2 14.4a7.3 7.3 0 0 1 0-4.7L1.3 6.7a12 12 0 0 0 0 10.7l3.9-3z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 4.7c1.8 0 3 .8 3.7 1.4l3.3-3.2C17 1 14.2 0 12 0 7.3 0 3.3 2.7 1.3 6.7l3.9 3c1-2.9 3.7-5 6.8-5z"
+                    />
+                  </svg>
+                  Google ile kayıt olundu; şifre işlemleri Google hesabından
+                  yapılır.
+                </p>
+              )}
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="submit"
