@@ -468,6 +468,10 @@ export default function AdminPage() {
     moderation: true,
     accountDeleted: true,
     verifyCode: true,
+    milestone20: true,
+    milestone50: true,
+    milestone150: true,
+    milestone250: true,
   });
 
   // Arama alanları — üyeler (isim/e-posta) ve üye manifestleri (kod/rumuz)
@@ -2515,6 +2519,38 @@ export default function AdminPage() {
                         "ekrandaki demo bildirimine düşer; canlıda kapatılması " +
                         "önerilmez.",
                       tone: "bg-amber-50/70",
+                    },
+                    {
+                      key: "milestone20",
+                      title: "Başarım: 20 şans (Sticker)",
+                      desc:
+                        "Manifest 20 şansa ulaştığında sahibine sticker " +
+                        "hakkı kazandığını bildiren kutlama maili gider.",
+                      tone: "bg-emerald-50/60",
+                    },
+                    {
+                      key: "milestone50",
+                      title: "Başarım: 50 şans (Özel Renk)",
+                      desc:
+                        "Manifest 50 şansa ulaştığında sahibine özel renk " +
+                        "hakkı kazandığını bildiren kutlama maili gider.",
+                      tone: "bg-emerald-50/60",
+                    },
+                    {
+                      key: "milestone150",
+                      title: "Başarım: 150 şans (Şişedeki Not)",
+                      desc:
+                        "Manifest 150 şansa ulaştığında sahibine şişede " +
+                        "sergilenme hakkı kazandığını bildiren mail gider.",
+                      tone: "bg-emerald-50/60",
+                    },
+                    {
+                      key: "milestone250",
+                      title: "Başarım: 250 şans (Hediye Kutusu)",
+                      desc:
+                        "Manifest 250 şansa ulaştığında sahibine hediye " +
+                        "kutusu hakkı kazandığını bildiren mail gider.",
+                      tone: "bg-emerald-50/60",
                     },
                   ] as const
                 ).map((row) => (

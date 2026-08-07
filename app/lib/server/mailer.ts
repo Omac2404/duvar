@@ -146,6 +146,130 @@ export async function sendAccountDeletedMail(p: Pool, to: string, name: string) 
   );
 }
 
+// ── Başarım (şans eşiği) bildirimleri ───────────────────────────────────
+// Manifest 20/50/150/250 şansa ulaştığında sahibine kutlama maili gider;
+// her eşik admin panelin Bildirimler sekmesinden ayrı ayrı açılıp kapanır.
+
+export const MILESTONES = [
+  {
+    threshold: 20,
+    key: "milestone20",
+    reward: "Sticker Hakkı",
+    desc:
+      "Zarfının kapağına manifest türüne uygun bir süs sticker'ı " +
+      "yapıştırabilirsin.",
+  },
+  {
+    threshold: 50,
+    key: "milestone50",
+    reward: "Özel Renk Hakkı",
+    desc:
+      "Zarfın için duvarda kendini belli eden parlak özel seri " +
+      "renklerden birini seçebilirsin.",
+  },
+  {
+    threshold: 150,
+    key: "milestone150",
+    reward: "Şişedeki Not Hakkı",
+    desc:
+      "Manifestini zarftan çıkarıp duvarda cam şişenin içinde " +
+      "sergileyebilirsin.",
+  },
+  {
+    threshold: 250,
+    key: "milestone250",
+    reward: "Hediye Kutusu Hakkı",
+    desc:
+      "Manifestini şişeden çıkarıp duvardaki kurdeleli hediye kutusuna " +
+      "koyabilirsin.",
+  },
+] as const;
+
+function sendMilestoneMail(
+  p: Pool,
+  to: string,
+  name: string,
+  manifestText: string,
+  m: (typeof MILESTONES)[number],
+) {
+  const firstName = name.split(/\s+/)[0] || name;
+  const short =
+    manifestText.length > 120 ? manifestText.slice(0, 120) + "…" : manifestText;
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const html = `
+  <div style="margin:0;padding:32px 16px;background-color:#f4f1ea;font-family:Arial,Helvetica,sans-serif;">
+    <div style="max-width:440px;margin:0 auto;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 8px 28px rgba(0,0,0,0.08);">
+      <div style="height:6px;background-color:#FFE8CD;background-image:linear-gradient(90deg,#FFC8CD,#FFE8CD,#FFFFCD,#CDFFD8,#CDEAFF,#EBCDFF);"></div>
+      <div style="padding:28px 32px;">
+        <p style="margin:0;font-size:20px;font-weight:bold;color:#262626;">Manifest Duvar&#305;</p>
+        <p style="margin:14px 0 0;font-size:14px;line-height:1.7;color:#525252;">
+          Merhaba ${esc(firstName)}, m&#252;jde! &#127881;
+        </p>
+        <p style="margin:12px 0 0;font-size:14px;line-height:1.7;color:#525252;">
+          A&#351;a&#287;&#305;daki manifestin <b>${m.threshold} &#351;ansa</b> ula&#351;t&#305; ve <b>${esc(m.reward)}</b> kazand&#305;n!
+        </p>
+        <div style="margin:18px 0;padding:14px 18px;background-color:#fafaf9;border-left:4px solid #fbbf24;border-radius:8px;">
+          <p style="margin:0;font-size:13px;line-height:1.6;color:#78716c;font-style:italic;">&#8220;${esc(short)}&#8221;</p>
+        </div>
+        <p style="margin:0;font-size:14px;line-height:1.7;color:#525252;">${esc(m.desc)}</p>
+        <div style="margin:22px 0 0;text-align:center;">
+          <a href="https://manifestduvari.com/panel" style="display:inline-block;padding:12px 28px;background-color:#262626;border-radius:12px;color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;">Hakk&#305;n&#305; Kullan</a>
+        </div>
+        <p style="margin:18px 0 0;font-size:12px;line-height:1.6;color:#a3a3a3;">
+          Sana &#351;ans dileyen herkese sevgiler; hayaline bir ad&#305;m daha yakla&#351;t&#305;n. &#10024;
+        </p>
+      </div>
+    </div>
+    <p style="max-width:440px;margin:14px auto 0;text-align:center;font-size:11px;color:#a3a3a3;">Manifest Duvar&#305; &#10024;</p>
+  </div>`;
+  return sendMail(
+    p,
+    to,
+    `Manifest Duvarı: Zarfın ${m.threshold} Şansa Ulaştı! 🎉`,
+    `Merhaba ${firstName}, müjde!\n\n` +
+      `Şu manifestin ${m.threshold} şansa ulaştı ve ${m.reward} kazandın:\n\n` +
+      `"${short}"\n\n${m.desc}\n\n` +
+      "Üye panelinden hakkını hemen kullanabilirsin: " +
+      "https://manifestduvari.com/panel\n\n" +
+      "Sana şans dileyen herkese sevgiler; hayaline bir adım daha " +
+      "yaklaştın. ✨\n\nManifest Duvarı",
+    html,
+  );
+}
+
+// Şans artışı eşik geçtiyse ilgili başarım maillerini gönderir. Çağıran
+// beklemeden (void) kullanır; demo zarfları ve e-postasız hesaplar atlanır
+export async function checkLuckMilestones(
+  p: Pool,
+  code: string,
+  oldLuck: number,
+  newLuck: number,
+) {
+  if (newLuck <= oldLuck) return;
+  const crossed = MILESTONES.filter(
+    (m) => oldLuck < m.threshold && newLuck >= m.threshold,
+  );
+  if (crossed.length === 0) return;
+  const { rows } = await p.query(
+    `SELECT m.manifest, m.is_demo, u.email, u.name
+     FROM manifests m JOIN users u ON u.id = m.user_id
+     WHERE m.code = $1`,
+    [code],
+  );
+  const r = rows[0];
+  if (!r || r.is_demo || !r.email) return;
+  const notify = await getNotify(p);
+  for (const m of crossed) {
+    if (!notify[m.key]) continue;
+    try {
+      await sendMilestoneMail(p, r.email, r.name, r.manifest, m);
+    } catch {
+      // Mail hatası şans akışını etkilemez
+    }
+  }
+}
+
 // Doğrulama / şifre sıfırlama kodu — site kimliğiyle uyumlu HTML şablon.
 // Anahtar kapalıysa gönderilmez; akış demo bildirimine düşer (kod ekranda)
 export async function sendCodeMail(p: Pool, to: string, code: string) {

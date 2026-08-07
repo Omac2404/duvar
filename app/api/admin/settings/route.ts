@@ -91,11 +91,10 @@ export async function PUT(req: Request) {
   }
   if (body.notify !== undefined) {
     const cur = await getNotify(db);
-    await setSetting(db, "notify", {
-      moderation: !!(body.notify.moderation ?? cur.moderation),
-      accountDeleted: !!(body.notify.accountDeleted ?? cur.accountDeleted),
-      verifyCode: !!(body.notify.verifyCode ?? cur.verifyCode),
-    });
+    const merged = { ...cur };
+    for (const k of Object.keys(cur) as (keyof NotifySettings)[])
+      if (body.notify[k] !== undefined) merged[k] = !!body.notify[k];
+    await setSetting(db, "notify", merged);
   }
   return Response.json({ ok: true });
 }

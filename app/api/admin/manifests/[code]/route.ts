@@ -8,7 +8,10 @@
 import { getDb } from "../../../../lib/server/db";
 import { isAdmin } from "../../../../lib/server/session";
 import { bad, validManifestCode } from "../../../../lib/server/validate";
-import { sendModerationMail } from "../../../../lib/server/mailer";
+import {
+  checkLuckMilestones,
+  sendModerationMail,
+} from "../../../../lib/server/mailer";
 import { MOD_CATEGORIES, type ModCategory } from "../../../../lib/moderation";
 
 // Kategori → mail gerekçe cümlesi ("manifest, {gerekçe} yayından kaldırıldı")
@@ -37,6 +40,9 @@ export async function PUT(
     [add, code],
   );
   if (r.rows.length === 0) return bad("Manifest bulunamadı.", 404);
+  // Eşik geçildiyse sahibine başarım maili (beklenmez)
+  const newLuck = Number(r.rows[0].luck);
+  void checkLuckMilestones(db, code, newLuck - add, newLuck).catch(() => {});
   return Response.json({ ok: true, luck: r.rows[0].luck });
 }
 

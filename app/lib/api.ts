@@ -376,6 +376,10 @@ export type NotifySettings = {
   moderation: boolean;
   accountDeleted: boolean;
   verifyCode: boolean;
+  milestone20: boolean; // 20 şans: sticker hakkı maili
+  milestone50: boolean; // 50 şans: özel renk hakkı maili
+  milestone150: boolean; // 150 şans: şişe hakkı maili
+  milestone250: boolean; // 250 şans: hediye kutusu hakkı maili
 };
 
 export async function adminSettings(): Promise<AdminSettings | null> {
