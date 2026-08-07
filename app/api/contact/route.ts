@@ -1,6 +1,7 @@
 // ── Bize Ulaşın formu — mesaj kaydeder, admin panelde listelenir ────────
 
 import { getDb } from "../../lib/server/db";
+import { sendContactForwardMail } from "../../lib/server/mailer";
 import { bad } from "../../lib/server/validate";
 
 export async function POST(req: Request) {
@@ -24,5 +25,13 @@ export async function POST(req: Request) {
      VALUES ($1, $2, $3, $4, $5)`,
     [firstName, lastName, email, phone, message],
   );
+  // Mesaj SMTP'deki kayıtlı adrese de iletilir (beklenmez; switch'e bağlı)
+  void sendContactForwardMail(db, {
+    firstName,
+    lastName,
+    email,
+    phone,
+    message,
+  }).catch(() => {});
   return Response.json({ ok: true });
 }

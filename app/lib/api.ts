@@ -395,6 +395,7 @@ export type NotifySettings = {
   milestone150: boolean; // 150 şans: şişe hakkı maili
   milestone250: boolean; // 250 şans: hediye kutusu hakkı maili
   cheer100: boolean; // her 100 tebrikte kutlama maili
+  contactForward: boolean; // form bildirimi (bize gelen) SMTP adresine
 };
 
 export async function adminSettings(): Promise<AdminSettings | null> {

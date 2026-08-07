@@ -672,6 +672,7 @@ export default function AdminPage() {
     milestone150: true,
     milestone250: true,
     cheer100: true,
+    contactForward: true,
   });
 
   // Arama alanları — üyeler (isim/e-posta) ve üye manifestleri (kod/rumuz)
@@ -2775,6 +2776,15 @@ export default function AdminPage() {
                         "Gerçekleşen manifestin tebrik sayısı her 100'e " +
                         "ulaştığında (100, 200, 300…) sahibine kutlama maili " +
                         "gider; hayali için bir tur da biz tebrik ederiz.",
+                      tone: "bg-sky-50/60",
+                    },
+                    {
+                      key: "contactForward",
+                      title: "Form bildirimi (bize gelen)",
+                      desc:
+                        "Bize Ulaşın formundan gelen her mesaj, SMTP'de " +
+                        "kayıtlı e-posta adresine de iletilir; maili " +
+                        "yanıtlayınca cevap doğrudan gönderene gider.",
                       tone: "bg-sky-50/60",
                     },
                   ] as const

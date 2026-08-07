@@ -64,7 +64,7 @@ export default function ContactPage() {
           Bize Ulaşın
         </h1>
         <p className="mt-2 text-center text-sm text-neutral-500">
-          Soru, öneri ya da iş birliği — bize yazın, en kısa sürede dönelim.
+          Soru, öneri ya da iş birliği için bize yazın, en kısa sürede dönelim.
         </p>
 
         {sent ? (

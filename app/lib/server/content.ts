@@ -282,6 +282,7 @@ export type NotifySettings = {
   milestone150: boolean; // 150 şans: şişe hakkı maili
   milestone250: boolean; // 250 şans: hediye kutusu hakkı maili
   cheer100: boolean; // her 100 tebrikte kutlama maili
+  contactForward: boolean; // iletişim formu mesajı SMTP adresine iletilir
 };
 
 export const DEFAULT_NOTIFY: NotifySettings = {
@@ -294,6 +295,7 @@ export const DEFAULT_NOTIFY: NotifySettings = {
   milestone150: true,
   milestone250: true,
   cheer100: true,
+  contactForward: true,
 };
 
 export async function getNotify(p: Pool): Promise<NotifySettings> {

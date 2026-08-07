@@ -20,6 +20,7 @@ export async function sendMail(
   subject: string,
   text: string,
   html?: string,
+  replyTo?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const cfg = await getMailSettings(p);
   if (!cfg.host.trim() || !(cfg.fromEmail.trim() || cfg.user.trim()))
@@ -38,6 +39,7 @@ export async function sendMail(
       subject,
       text,
       html: html || undefined,
+      replyTo: replyTo || undefined,
     });
     return { ok: true };
   } catch (e) {
@@ -46,6 +48,55 @@ export async function sendMail(
       error: e instanceof Error ? e.message : "Gönderim hatası",
     };
   }
+}
+
+// ── İletişim formu iletimi — mesaj SMTP'deki kayıtlı adrese düşer ───────
+// Yanıtla dendiğinde cevap doğrudan formu dolduran kişiye gider (replyTo)
+export async function sendContactForwardMail(
+  p: Pool,
+  msg: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    message: string;
+  },
+) {
+  if (!(await getNotify(p)).contactForward)
+    return { ok: false, error: "Bildirim kapalı (admin)" };
+  const cfg = await getMailSettings(p);
+  const to = cfg.fromEmail.trim() || cfg.user.trim();
+  if (!to) return { ok: false, error: "SMTP yapılandırılmamış" };
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const html = `
+  <div style="margin:0;padding:32px 16px;background-color:#f4f1ea;font-family:Arial,Helvetica,sans-serif;">
+    <div style="max-width:480px;margin:0 auto;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 8px 28px rgba(0,0,0,0.08);">
+      <div style="height:6px;background-color:#FFE8CD;background-image:linear-gradient(90deg,#FFC8CD,#FFE8CD,#FFFFCD,#CDFFD8,#CDEAFF,#EBCDFF);"></div>
+      <div style="padding:28px 32px;">
+        <p style="margin:0;font-size:18px;font-weight:bold;color:#262626;">Yeni &#304;leti&#351;im Mesaj&#305; &#128233;</p>
+        <table style="margin:16px 0 0;font-size:13px;color:#525252;line-height:1.8;">
+          <tr><td style="padding-right:12px;color:#a3a3a3;">G&#246;nderen</td><td><b>${esc(msg.firstName)} ${esc(msg.lastName)}</b></td></tr>
+          <tr><td style="padding-right:12px;color:#a3a3a3;">E-posta</td><td>${esc(msg.email)}</td></tr>
+          ${msg.phone ? `<tr><td style="padding-right:12px;color:#a3a3a3;">Telefon</td><td>${esc(msg.phone)}</td></tr>` : ""}
+        </table>
+        <div style="margin:16px 0 0;padding:14px 18px;background-color:#fafaf9;border-left:4px solid #e7e5e4;border-radius:8px;">
+          <p style="margin:0;font-size:13px;line-height:1.7;color:#525252;white-space:pre-wrap;">${esc(msg.message)}</p>
+        </div>
+        <p style="margin:16px 0 0;font-size:12px;color:#a3a3a3;">Bu e-postay&#305; yan&#305;tlad&#305;&#287;&#305;nda cevab&#305;n do&#287;rudan g&#246;nderene gider.</p>
+      </div>
+    </div>
+  </div>`;
+  return sendMail(
+    p,
+    to,
+    `Manifest Duvarı: Yeni İletişim Mesajı (${msg.firstName} ${msg.lastName})`,
+    `Yeni iletişim mesajı\n\nGönderen: ${msg.firstName} ${msg.lastName}\n` +
+      `E-posta: ${msg.email}\n${msg.phone ? `Telefon: ${msg.phone}\n` : ""}\n` +
+      `${msg.message}\n\nBu e-postayı yanıtladığında cevabın doğrudan gönderene gider.`,
+    html,
+    msg.email,
+  );
 }
 
 // Moderasyon: kaldırılan manifest için yumuşak tonlu bilgilendirme maili.
