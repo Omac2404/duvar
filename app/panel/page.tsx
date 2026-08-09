@@ -32,6 +32,7 @@ import {
   type User,
 } from "../lib/auth";
 import { fetchSettings } from "../lib/api";
+import { MANIFEST_QUOTA } from "../lib/quota";
 import { stripEmoji } from "../lib/text";
 
 const inputCls =
@@ -1484,17 +1485,26 @@ export default function PanelPage() {
   const [viewYear, setViewYear] = useState<number | null>(null);
 
   useEffect(() => {
-    currentUser().then((u) => {
+    Promise.all([currentUser(), fetchSettings()]).then(([u, s]) => {
       if (!u) {
         window.location.href = "/uye";
         return;
       }
       setUser(u);
       setNewName(u.name);
+      const year = s.year || new Date().getFullYear();
+      setNowYear(year);
       setReady(true);
-    });
-    fetchSettings().then((s) => {
-      if (s.year) setNowYear(s.year);
+      // Alt bardaki mor buton buraya ?yaz=1 ile gönderir: hak kaldıysa
+      // yazma penceresi kendiliğinden açılır. Adres sonrasında temizlenir
+      // ki sayfa yenilenince pencere tekrar açılmasın
+      if (new URLSearchParams(window.location.search).get("yaz") === "1") {
+        const used = u.manifests.filter(
+          (m) => new Date(m.ts).getFullYear() === year,
+        ).length;
+        if (used < MANIFEST_QUOTA) openWrite();
+        window.history.replaceState({}, "", "/panel");
+      }
     });
   }, []);
 
@@ -1656,7 +1666,7 @@ export default function PanelPage() {
   // yalnızca etkin yıla yazılır; içinde bulunulan yılda silinen manifest
   // slotu boşaltır. Geçmiş yıl manifestleri korunur ya da silinir —
   // silmek geçmiş yıla slot açmaz (sunucu da aynı kuralı uygular)
-  const QUOTA = 3;
+  const QUOTA = MANIFEST_QUOTA; // alt bardaki rozetle aynı kaynak
   const usedQuota = user.manifests.filter(
     (m) => new Date(m.ts).getFullYear() === nowYear,
   ).length;

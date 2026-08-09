@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { currentUser } from "../lib/auth";
+import { MANIFEST_QUOTA, quotaBadge, type QuotaInfo } from "../lib/quota";
 
 function IconInfo() {
   return (
@@ -81,27 +82,42 @@ function IconPen() {
   );
 }
 
-// initialLoggedIn: oturum sunucuda okunup buraya geçirilir, böylece
-// çağrı butonu daha ilk boyamada doğru durumda çizilir — girişli üyenin
-// ekranında bir an "Sen de yaz!" parlayıp kaybolmaz, girişsiz ziyaretçi
-// de butonu gecikmeli görmez
+// Oturum ve hak durumu sunucuda okunup buraya geçirilir; buton daha ilk
+// boyamada doğru etiketle çizilir, sonradan değişip zıplamaz
 export default function BottomNav({
   initialLoggedIn,
+  initialQuota,
 }: {
   initialLoggedIn: boolean;
+  initialQuota: QuotaInfo | null;
 }) {
   const [loggedIn, setLoggedIn] = useState(initialLoggedIn);
+  const [quota, setQuota] = useState(initialQuota);
   const pathname = usePathname();
 
-  // İstemci tarafı gezinmede (giriş/çıkış sonrası) durum tazelenir
+  // İstemci tarafı gezinmede (giriş/çıkış, yeni manifest) durum tazelenir
   useEffect(() => {
-    currentUser().then((u) => setLoggedIn(!!u));
+    currentUser().then((u) => {
+      setLoggedIn(!!u);
+      setQuota((q) => {
+        if (!u) return null;
+        const year = q?.year ?? new Date().getFullYear();
+        return {
+          year,
+          used: u.manifests.filter(
+            (m) => new Date(m.ts).getFullYear() === year,
+          ).length,
+        };
+      });
+    });
   }, [pathname]);
 
   // Üyelik ekranında kendi kendine gönderen buton anlamsız; admin paneli
   // de ziyaretçi menüsünün yeri değil (orada üyelik çağrısı hiç olmamalı)
   if (pathname === "/uye" || pathname.startsWith("/mnfstdvr-admn"))
     return null;
+
+  const quotaFull = !!quota && quota.used >= MANIFEST_QUOTA;
 
   const item =
     "flex flex-1 cursor-pointer flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-[11px] font-semibold transition-colors";
@@ -113,24 +129,43 @@ export default function BottomNav({
       {/* Sabit bar içeriğin son satırını örtmesin diye ayrılan pay */}
       <div aria-hidden className="h-[76px] shrink-0" />
 
-      {/* Girişsiz ziyaretçinin göreceği asıl çağrı — bardan yukarı taşar */}
-      {!loggedIn && (
-        <a
-          href="/uye"
-          className="fixed bottom-[58px] left-1/2 z-[1420] -translate-x-1/2"
-        >
-          <span className="relative flex">
+      {/* Asıl çağrı — bardan yukarı taşar, her durumda görünür.
+          Girişsiz: /uye'ye davet, dikkat çeksin diye canlandırılır.
+          Girişli + hak varsa: hak rozetiyle birlikte panele gider ve
+          manifest yazma penceresini kendiliğinden açar (?yaz=1).
+          Hak dolduysa: bilgi verir, panele götürür, canlandırma yok */}
+      <a
+        href={
+          !loggedIn ? "/uye" : quotaFull ? "/panel" : "/panel?yaz=1"
+        }
+        className="fixed bottom-[58px] left-1/2 z-[1420] -translate-x-1/2"
+      >
+        <span className="relative flex">
+          {!loggedIn && (
             <span
               aria-hidden
               className="mw-cta-ring absolute inset-0 rounded-full bg-violet-500"
             />
-            <span className="mw-cta relative flex items-center gap-2.5 whitespace-nowrap rounded-full bg-violet-600 px-7 py-3.5 text-[17px] font-extrabold text-white shadow-[0_10px_28px_rgba(124,58,237,0.5)] max-[420px]:px-6 max-[420px]:py-3 max-[420px]:text-[15px]">
-              <IconPen />
-              Sen de yaz!
-            </span>
+          )}
+          <span
+            className={`relative flex items-center gap-2.5 whitespace-nowrap rounded-full bg-violet-600 px-7 py-3.5 text-[17px] font-extrabold text-white shadow-[0_10px_28px_rgba(124,58,237,0.5)] max-[420px]:gap-2 max-[420px]:px-5 max-[420px]:py-3 max-[420px]:text-[14px] ${
+              loggedIn ? "" : "mw-cta"
+            }`}
+          >
+            {!quotaFull && <IconPen />}
+            {quotaFull && quota
+              ? `${quota.year} haklarını kullandın`
+              : "Sen de yaz!"}
+            {quota && (
+              <span className="rounded-full bg-white/20 px-2.5 py-1 text-[12px] font-bold max-[420px]:px-2 max-[420px]:text-[11px]">
+                {quotaFull
+                  ? `${MANIFEST_QUOTA}/${MANIFEST_QUOTA}`
+                  : quotaBadge(quota)}
+              </span>
+            )}
           </span>
-        </a>
-      )}
+        </span>
+      </a>
 
       <nav className="fixed bottom-0 left-0 right-0 z-[1410] flex items-stretch gap-1 border-t border-neutral-200 bg-white/95 px-3 pb-[max(6px,env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-6px_24px_rgba(0,0,0,0.10)] backdrop-blur">
         <Link

@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Caveat } from "next/font/google";
 import "./globals.css";
-import { getDb, getSetting } from "./lib/server/db";
+import { effectiveYear, getDb, getSetting } from "./lib/server/db";
 import { getLegal, getSeo } from "./lib/server/content";
 import { sessionUserId } from "./lib/server/session";
+import type { QuotaInfo } from "./lib/quota";
 import HeadCode from "./components/HeadCode";
 import SiteFooter from "./components/SiteFooter";
 import BottomNav from "./components/BottomNav";
@@ -54,14 +55,25 @@ export default async function RootLayout({
 }>) {
   let headCode = "";
   let cookieBanner = "";
-  // Oturum durumu burada okunur ki alt bardaki "Sen de yaz!" çağrısı daha
-  // ilk boyamada doğru görünsün (girişli üyeye hiç gösterilmez)
+  // Oturum ve yıllık hak durumu burada okunur ki alt bardaki "Sen de yaz!"
+  // butonu daha ilk boyamada doğru etiketle çizilsin (girişsizde davet,
+  // girişlide "2026 manifest 3/1", hak dolduğunda "3/3")
   let loggedIn = false;
+  let quota: QuotaInfo | null = null;
   try {
     const db = await getDb();
     headCode = (await getSeo(db)).headCode;
     cookieBanner = (await getLegal(db)).cookieBanner;
-    loggedIn = (await sessionUserId()) !== null;
+    const uid = await sessionUserId();
+    loggedIn = uid !== null;
+    if (uid) {
+      const year = await effectiveYear(db);
+      const { rows } = await db.query(
+        "SELECT count(*)::int AS n FROM manifests WHERE user_id = $1 AND y = $2",
+        [uid, year],
+      );
+      quota = { year, used: rows[0].n as number };
+    }
   } catch {}
   return (
     <html
@@ -73,8 +85,8 @@ export default async function RootLayout({
         {children}
         {/* Sitenin en altında ince yasal bar (ss111) + çerez kutusu */}
         <SiteFooter />
-        {/* Sabit alt menü + girişsizlere "Sen de yaz!" çağrısı */}
-        <BottomNav initialLoggedIn={loggedIn} />
+        {/* Sabit alt menü + her durumda "Sen de yaz!" butonu */}
+        <BottomNav initialLoggedIn={loggedIn} initialQuota={quota} />
         <CookieConsent text={cookieBanner} />
       </body>
     </html>
