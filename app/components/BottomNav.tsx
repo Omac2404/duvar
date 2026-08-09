@@ -1,12 +1,14 @@
 "use client";
 
-// ── Alt menü + "Sen de yaz!" çağrısı ────────────────────────────────────
+// ── Yüzen alt menü + "Sen de yaz!" çağrısı ──────────────────────────────
 // Geri bildirim: ziyaretçilerin çoğu üye olma yolunu bulamadı (sağ üstteki
 // hamburgere tıklanacağı anlaşılmıyor), 6-7 kişi manifestini iletişim
-// formundan gönderdi. Bu yüzden üyelik yolu artık ekranın altında sabit:
-// girişsiz ziyaretçi büyük, hareketli mor bir "Sen de yaz!" butonu görür,
-// alt barın sağ ucu da /uye'ye çıkar. Giriş yapılınca buton kalkar ve
-// "Giriş Yap" yazısı "Hesabım"a döner.
+// formundan gönderdi. Bu yüzden üyelik yolu artık ekranın altında sabit.
+//
+// Menü kenarlara yaslanmaz, ortada dar bir ada gibi yüzer. Yazma çağrısı
+// yalnızca duvarda (/) görünür; diğer sayfalarda yalnızca menü kalır.
+// Girişsizde /uye'ye davet eder, girişlide yıllık hakkı gösterip panelde
+// yazma penceresini açar, hak dolduğunda "3/3" bilgisine döner.
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -23,7 +25,7 @@ function IconInfo() {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="h-[18px] w-[18px] shrink-0"
+      className="h-[18px] w-[18px] shrink-0 max-[430px]:h-4 max-[430px]:w-4"
     >
       <circle cx="12" cy="12" r="10" />
       <path d="M12 16v-4M12 8h.01" />
@@ -40,7 +42,7 @@ function IconWall() {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="h-[18px] w-[18px] shrink-0"
+      className="h-[18px] w-[18px] shrink-0 max-[430px]:h-4 max-[430px]:w-4"
     >
       <rect width="20" height="16" x="2" y="4" rx="2" />
       <path d="m2 7 10 6 10-6" />
@@ -57,7 +59,7 @@ function IconUser() {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="h-[18px] w-[18px] shrink-0"
+      className="h-[18px] w-[18px] shrink-0 max-[430px]:h-4 max-[430px]:w-4"
     >
       <circle cx="12" cy="8" r="4" />
       <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
@@ -118,56 +120,64 @@ export default function BottomNav({
     return null;
 
   const quotaFull = !!quota && quota.used >= MANIFEST_QUOTA;
+  // Yazma çağrısı yalnızca duvarda: diğer sayfalarda gereksiz yer kaplıyor
+  const showCta = pathname === "/";
 
+  // whitespace-nowrap: "Merak Edilenler" dar ekranda alt satıra kaçınca
+  // bar iki kat yükseliyor ve butonun altına giriyordu
   const item =
-    "flex flex-1 cursor-pointer flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-[11px] font-semibold transition-colors";
+    "flex flex-1 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-2 py-2 text-[12px] font-semibold transition-colors max-[430px]:gap-1 max-[430px]:px-1 max-[430px]:text-[10.5px]";
   const active = "bg-amber-50 text-amber-700";
   const idle = "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800";
 
   return (
     <>
-      {/* Sabit bar içeriğin son satırını örtmesin diye ayrılan pay */}
-      <div aria-hidden className="h-[76px] shrink-0" />
+      {/* Yüzen bar içeriğin son satırını örtmesin diye ayrılan pay */}
+      <div
+        aria-hidden
+        className={`shrink-0 ${showCta ? "h-[128px]" : "h-[76px]"}`}
+      />
 
-      {/* Asıl çağrı — bardan yukarı taşar, her durumda görünür.
+      {/* Yazma çağrısı — barın hemen üstünde, arada küçük bir boşlukla.
           Girişsiz: /uye'ye davet, dikkat çeksin diye canlandırılır.
-          Girişli + hak varsa: hak rozetiyle birlikte panele gider ve
-          manifest yazma penceresini kendiliğinden açar (?yaz=1).
+          Girişli + hak varsa: hak rozetiyle panele gider ve manifest
+          yazma penceresini kendiliğinden açar (?yaz=1).
           Hak dolduysa: bilgi verir, panele götürür, canlandırma yok */}
-      <a
-        href={
-          !loggedIn ? "/uye" : quotaFull ? "/panel" : "/panel?yaz=1"
-        }
-        className="fixed bottom-[58px] left-1/2 z-[1420] -translate-x-1/2"
-      >
-        <span className="relative flex">
-          {!loggedIn && (
-            <span
-              aria-hidden
-              className="mw-cta-ring absolute inset-0 rounded-full bg-violet-500"
-            />
-          )}
-          <span
-            className={`relative flex items-center gap-2.5 whitespace-nowrap rounded-full bg-violet-600 px-7 py-3.5 text-[17px] font-extrabold text-white shadow-[0_10px_28px_rgba(124,58,237,0.5)] max-[420px]:gap-2 max-[420px]:px-5 max-[420px]:py-3 max-[420px]:text-[14px] ${
-              loggedIn ? "" : "mw-cta"
-            }`}
-          >
-            {!quotaFull && <IconPen />}
-            {quotaFull && quota
-              ? `${quota.year} haklarını kullandın`
-              : "Sen de yaz!"}
-            {quota && (
-              <span className="rounded-full bg-white/20 px-2.5 py-1 text-[12px] font-bold max-[420px]:px-2 max-[420px]:text-[11px]">
-                {quotaFull
-                  ? `${MANIFEST_QUOTA}/${MANIFEST_QUOTA}`
-                  : quotaBadge(quota)}
-              </span>
+      {showCta && (
+        <a
+          href={!loggedIn ? "/uye" : quotaFull ? "/panel" : "/panel?yaz=1"}
+          className="fixed bottom-[74px] left-1/2 z-[1420] -translate-x-1/2"
+        >
+          <span className="relative flex">
+            {!loggedIn && (
+              <span
+                aria-hidden
+                className="mw-cta-ring absolute inset-0 rounded-full bg-violet-500"
+              />
             )}
+            <span
+              className={`relative flex items-center gap-2 whitespace-nowrap rounded-full bg-violet-600 px-5 py-2.5 text-[15px] font-extrabold text-white shadow-[0_8px_22px_rgba(124,58,237,0.45)] max-[380px]:gap-1.5 max-[380px]:px-4 max-[380px]:py-2 max-[380px]:text-[13px] ${
+                loggedIn ? "" : "mw-cta"
+              }`}
+            >
+              {!quotaFull && <IconPen />}
+              {quotaFull && quota
+                ? `${quota.year} haklarını kullandın`
+                : "Sen de yaz!"}
+              {quota && (
+                <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-bold max-[380px]:text-[10px]">
+                  {quotaFull
+                    ? `${MANIFEST_QUOTA}/${MANIFEST_QUOTA}`
+                    : quotaBadge(quota)}
+                </span>
+              )}
+            </span>
           </span>
-        </span>
-      </a>
+        </a>
+      )}
 
-      <nav className="fixed bottom-0 left-0 right-0 z-[1410] flex items-stretch gap-1 border-t border-neutral-200 bg-white/95 px-3 pb-[max(6px,env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-6px_24px_rgba(0,0,0,0.10)] backdrop-blur">
+      {/* Yüzen menü — kenarlara yaslanmaz, ortada dar bir ada gibi durur */}
+      <nav className="fixed bottom-[max(10px,env(safe-area-inset-bottom))] left-1/2 z-[1410] flex w-[min(94vw,420px)] -translate-x-1/2 items-stretch gap-1 rounded-full border border-neutral-200/80 bg-white/95 p-1.5 shadow-[0_8px_28px_rgba(0,0,0,0.14)] backdrop-blur">
         <Link
           href="/merak-edilenler"
           className={`${item} ${pathname === "/merak-edilenler" ? active : idle}`}

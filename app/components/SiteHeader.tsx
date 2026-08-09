@@ -147,6 +147,29 @@ export default function SiteHeader({
         >
           Bize Yazın
         </a>
+        {/* Yasal sayfalar — sayfa altındaki ince bar yüzen alt menüyle
+            çakıştığı için kaldırıldı; erişilebilir kalsınlar diye geniş
+            ekranda buraya, dar ekranda hamburger menünün altına kondu */}
+        <span className="flex flex-col leading-tight max-[900px]:hidden">
+          <a
+            href="/gizlilik"
+            className="whitespace-nowrap px-1.5 text-[10px] font-medium text-neutral-400 transition-colors hover:text-neutral-700"
+          >
+            Gizlilik ve KVKK
+          </a>
+          <a
+            href="/cerez-politikasi"
+            className="whitespace-nowrap px-1.5 text-[10px] font-medium text-neutral-400 transition-colors hover:text-neutral-700"
+          >
+            Çerez Politikası
+          </a>
+          <a
+            href="/kullanim-kosullari"
+            className="whitespace-nowrap px-1.5 text-[10px] font-medium text-neutral-400 transition-colors hover:text-neutral-700"
+          >
+            Kullanım Koşulları
+          </a>
+        </span>
         {/* Üyelik butonu — mobildeki ile aynı dil: mor çerçeve + kişi ikonu */}
         <a
           href={me ? "/panel" : "/uye"}
@@ -287,6 +310,29 @@ export default function SiteHeader({
                     </a>
                   )}
                 </nav>
+                {/* Yasal sayfalar — eskiden sayfanın en altındaki ince
+                    bardaydı; yüzen alt menüyle çakıştığı için buraya
+                    taşındı, erişilebilir kalması gerekiyor */}
+                <div className="flex flex-col gap-1 border-t border-neutral-100 px-6 py-4">
+                  <a
+                    href="/gizlilik"
+                    className="text-[11px] font-medium text-neutral-400 transition-colors hover:text-neutral-700"
+                  >
+                    Gizlilik ve KVKK Aydınlatma Metni
+                  </a>
+                  <a
+                    href="/cerez-politikasi"
+                    className="text-[11px] font-medium text-neutral-400 transition-colors hover:text-neutral-700"
+                  >
+                    Çerez Politikası
+                  </a>
+                  <a
+                    href="/kullanim-kosullari"
+                    className="text-[11px] font-medium text-neutral-400 transition-colors hover:text-neutral-700"
+                  >
+                    Kullanım Koşulları
+                  </a>
+                </div>
               </aside>
             </div>,
             document.body,
