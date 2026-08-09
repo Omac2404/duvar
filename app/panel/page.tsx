@@ -32,6 +32,7 @@ import {
   type User,
 } from "../lib/auth";
 import { fetchSettings } from "../lib/api";
+import { stripEmoji } from "../lib/text";
 
 const inputCls =
   "w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm " +
@@ -51,11 +52,6 @@ function firstPendingStep(m: MemberManifest): RewardStep | null {
   if (m.luck >= 150 && !m.bottled && !m.boxed) return "bottle";
   if (m.luck >= 250 && !m.boxed) return "box";
   return null;
-}
-
-// Manifest metni düz metindir: emoji/ikon karakterleri yazarken ayıklanır
-function stripEmoji(s: string): string {
-  return s.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, "");
 }
 
 function initials(name: string): string {
@@ -1921,17 +1917,7 @@ export default function PanelPage() {
             >
               {viewY} Manifestlerim
             </h2>
-            {viewY === nowYear ? (
-              <span
-                className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold max-[520px]:order-3 ${
-                  quotaLeft > 0
-                    ? "bg-amber-50 text-amber-600"
-                    : "bg-neutral-100 text-neutral-400"
-                }`}
-              >
-                {usedQuota}/{QUOTA} hak kullanıldı
-              </span>
-            ) : (
+            {viewY === nowYear ? null : (
               <span
                 className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-[11px] font-semibold text-neutral-400 max-[520px]:order-3"
                 title="Geçmiş yıla yeni manifest yazılamaz; mevcutlar korunur ya da silinir"
@@ -1962,6 +1948,58 @@ export default function PanelPage() {
               </button>
             )}
           </div>
+
+          {/* Hak kartı — eski "3/3 hak kullanıldı" rozetini birkaç kişi
+              fark etmedi, üç hakkı olduğunu bilmeden ayrıldı. Artık kalan
+              hak büyük yazılır, noktalar durumu bir bakışta gösterir ve
+              konsept ("her sene 3 hak, o yıldan beklentilerin") burada
+              açıkça anlatılır — genel/süresiz dilek yazanlar da çoktu */}
+          {viewY === nowYear && (
+            <div
+              className={`mb-4 rounded-2xl border px-5 py-4 ${
+                quotaLeft > 0
+                  ? "border-amber-200 bg-amber-50/70"
+                  : "border-neutral-200 bg-neutral-50"
+              }`}
+            >
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <p
+                  className={`text-[22px] font-extrabold leading-tight max-[520px]:text-[19px] ${
+                    quotaLeft > 0 ? "text-amber-700" : "text-neutral-500"
+                  }`}
+                >
+                  {quotaLeft > 0
+                    ? `Bu sene ${quotaLeft} manifest hakkın kaldı`
+                    : `Bu senenin ${QUOTA} hakkını da kullandın`}
+                </p>
+                {/* Doldukça sönen noktalar: kaç hak kaldığı bir bakışta */}
+                <span className="flex items-center gap-1.5" aria-hidden>
+                  {Array.from({ length: QUOTA }, (_, i) => (
+                    <span
+                      key={i}
+                      className={`h-2.5 w-2.5 rounded-full ${
+                        i < usedQuota
+                          ? "bg-neutral-300"
+                          : "bg-amber-400 ring-2 ring-amber-200"
+                      }`}
+                    />
+                  ))}
+                </span>
+                <span className="text-xs font-semibold text-neutral-500">
+                  {/* Admin elle manifest eklediyse kullanım hakkı aşabilir;
+                      "3 haktan 5 tanesi" yazmasın diye kırpılır */}
+                  {QUOTA} haktan {Math.min(usedQuota, QUOTA)} tanesini
+                  kullandın
+                </span>
+              </div>
+              <p className="mt-2 text-[13px] leading-relaxed text-neutral-600">
+                Her yeni sene <strong>3 manifest hakkın</strong> olur. Buraya{" "}
+                <strong>{viewY} yılından beklentilerini</strong> yazarsın —
+                yıl sonunda gerçekleşenleri işaretleyip geri dönüp
+                okuyabilirsin.
+              </p>
+            </div>
+          )}
 
           {yearManifests.length === 0 ? (
             <div className="rounded-2xl border-2 border-dashed border-neutral-300 bg-white/60 px-6 py-12 text-center">
@@ -2267,13 +2305,15 @@ export default function PanelPage() {
                     {/* Rumuz — mektubun başlığına yazılır (maks 20 karakter),
                         modal açılınca imleç burada başlar */}
                     <div className="flex items-end gap-2">
+                      {/* Rumuzda emoji yok (duvarda zarfın üstünde yalnızca
+                          bu görünüyor); emoji manifest metnine yazılabilir */}
                       <input
                         value={draftName}
                         onChange={(e) =>
-                          setDraftName(e.target.value.slice(0, 20))
+                          setDraftName(stripEmoji(e.target.value).slice(0, 20))
                         }
                         autoFocus
-                        placeholder="Rumuzun…"
+                        placeholder="Rumuzun… (emojisiz)"
                         className="w-full bg-transparent font-hand text-[26px] text-neutral-800 outline-none placeholder:text-neutral-300 max-[520px]:text-[22px]"
                       />
                       <span className="shrink-0 pb-1 text-[10px] text-neutral-300">
@@ -2287,9 +2327,7 @@ export default function PanelPage() {
                     {/* Manifest metni — mektubun gövdesine yazılır */}
                     <textarea
                       value={draft}
-                      onChange={(e) =>
-                        setDraft(stripEmoji(e.target.value).slice(0, 250))
-                      }
+                      onChange={(e) => setDraft(e.target.value.slice(0, 250))}
                       rows={7}
                       placeholder="Manifestini buraya yaz… (en az 10 karakter)"
                       className="mt-4 w-full resize-none bg-transparent text-[14px] leading-relaxed text-neutral-700 outline-none placeholder:text-neutral-300 max-[520px]:text-[13px]"

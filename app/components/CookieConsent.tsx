@@ -18,7 +18,9 @@ export default function CookieConsent({ text }: { text: string }) {
   }, []);
   if (!show || !text.trim()) return null;
   return (
-    <div className="fixed bottom-4 left-4 z-[1900] w-[min(92vw,340px)] rounded-2xl border border-neutral-200 bg-white/95 p-4 shadow-2xl backdrop-blur max-[640px]:left-1/2 max-[640px]:-translate-x-1/2">
+    // bottom: sabit alt menünün ve onun üstüne taşan "Sen de yaz!"
+    // butonunun ikisini de örtmeyecek yükseklikte durur
+    <div className="fixed bottom-[132px] left-4 z-[1900] w-[min(92vw,340px)] rounded-2xl border border-neutral-200 bg-white/95 p-4 shadow-2xl backdrop-blur max-[640px]:left-1/2 max-[640px]:-translate-x-1/2">
       <p className="text-xs leading-relaxed text-neutral-600">
         🍪 {text}{" "}
         <a

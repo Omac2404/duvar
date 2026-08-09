@@ -714,6 +714,14 @@ export default function AdminPage() {
   const [manPage, setManPage] = useState(0);
   const [manList, setManList] = useState<AdminManifestList | null>(null);
   const [luckAmt, setLuckAmt] = useState<Record<string, string>>({});
+  // Manifest metni tabloda kırpılıyor; satırın üzerine gelince tamamı
+  // burada gösterilir. Tablo overflow-x-auto içinde olduğundan balon
+  // `fixed` konumlanır — taşma kutusu tarafından kırpılmaz
+  const [manTip, setManTip] = useState<{
+    text: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   // Silme gerekçesi — modaldaki seçim ("none" = gerekçesiz bildirim)
   const [delReason, setDelReason] = useState("none");
@@ -1693,7 +1701,18 @@ export default function AdminPage() {
                     </td>
                     <td className={`${tdCls} max-w-28 truncate text-xs`}>{m.owner}</td>
                     <td className={`${tdCls} max-w-32 truncate font-semibold`}>{m.name}</td>
-                    <td className={`${tdCls} max-w-56`}>
+                    <td
+                      className={`${tdCls} max-w-56 cursor-help`}
+                      onMouseEnter={(e) => {
+                        const r = e.currentTarget.getBoundingClientRect();
+                        setManTip({
+                          text: m.manifest,
+                          x: r.left,
+                          y: r.bottom + 6,
+                        });
+                      }}
+                      onMouseLeave={() => setManTip(null)}
+                    >
                       <span className="block truncate text-xs text-neutral-500">{m.manifest}</span>
                     </td>
                     <td className={`${tdCls} whitespace-nowrap`}>
@@ -1749,6 +1768,20 @@ export default function AdminPage() {
               </tbody>
             </table>
           </section>
+          {/* Manifest metninin tamamı — imleç satırdayken görünür */}
+          {manTip && (
+            <div
+              role="tooltip"
+              className="pointer-events-none fixed z-[2000] max-w-[min(30rem,90vw)] rounded-xl bg-neutral-800 px-3.5 py-2.5 text-xs leading-relaxed text-white shadow-2xl"
+              style={{
+                // Sağ kenardan taşarsa içeri çekilir
+                left: Math.min(manTip.x, window.innerWidth - 500),
+                top: manTip.y,
+              }}
+            >
+              {manTip.text}
+            </div>
+          )}
           {manPages > 1 && (
             <div className="flex items-center justify-center gap-3 text-sm">
               <button

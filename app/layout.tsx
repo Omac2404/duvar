@@ -3,8 +3,10 @@ import { Geist, Caveat } from "next/font/google";
 import "./globals.css";
 import { getDb, getSetting } from "./lib/server/db";
 import { getLegal, getSeo } from "./lib/server/content";
+import { sessionUserId } from "./lib/server/session";
 import HeadCode from "./components/HeadCode";
 import SiteFooter from "./components/SiteFooter";
+import BottomNav from "./components/BottomNav";
 import CookieConsent from "./components/CookieConsent";
 
 // Tüm sayfalar istek anında sunulur: SEO/head kodu/çerez metni/yasal
@@ -52,10 +54,14 @@ export default async function RootLayout({
 }>) {
   let headCode = "";
   let cookieBanner = "";
+  // Oturum durumu burada okunur ki alt bardaki "Sen de yaz!" çağrısı daha
+  // ilk boyamada doğru görünsün (girişli üyeye hiç gösterilmez)
+  let loggedIn = false;
   try {
     const db = await getDb();
     headCode = (await getSeo(db)).headCode;
     cookieBanner = (await getLegal(db)).cookieBanner;
+    loggedIn = (await sessionUserId()) !== null;
   } catch {}
   return (
     <html
@@ -67,6 +73,8 @@ export default async function RootLayout({
         {children}
         {/* Sitenin en altında ince yasal bar (ss111) + çerez kutusu */}
         <SiteFooter />
+        {/* Sabit alt menü + girişsizlere "Sen de yaz!" çağrısı */}
+        <BottomNav initialLoggedIn={loggedIn} />
         <CookieConsent text={cookieBanner} />
       </body>
     </html>

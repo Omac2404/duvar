@@ -10,6 +10,7 @@ import {
   trDate,
 } from "../../../lib/server/db";
 import { sessionUserId } from "../../../lib/server/session";
+import { cleanNickname } from "../../../lib/text";
 import { bad, validManifestCode } from "../../../lib/server/validate";
 
 type IncomingManifest = {
@@ -101,7 +102,8 @@ export async function PUT(req: Request) {
              realized = $8, realized_label = $9
            WHERE code = $10 AND user_id = $11`,
           [
-            m.name.trim(),
+            // Rumuz emojisiz saklanır (metinde emoji serbest)
+            cleanNickname(m.name),
             m.manifest.trim(),
             m.colorIdx ?? 0,
             m.sticker ?? null,
@@ -135,7 +137,7 @@ export async function PUT(req: Request) {
           [
             m.code,
             uid,
-            m.name.trim(),
+            cleanNickname(m.name),
             m.manifest.trim(),
             trDate(new Date(ts)),
             ts,

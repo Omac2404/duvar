@@ -3,6 +3,7 @@
 
 import { getDb, setSetting, trDate } from "../../../../lib/server/db";
 import { isAdmin } from "../../../../lib/server/session";
+import { cleanNickname } from "../../../../lib/text";
 import { bad, validManifestCode } from "../../../../lib/server/validate";
 import { sendAccountDeletedMail } from "../../../../lib/server/mailer";
 
@@ -93,7 +94,7 @@ export async function PUT(
         [
           m.code,
           id,
-          (m.name ?? "").trim(),
+          cleanNickname(m.name ?? ""), // rumuz emojisiz saklanır
           (m.manifest ?? "").trim(),
           m.date || trDate(),
           m.ts || Date.now(),

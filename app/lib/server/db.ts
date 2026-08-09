@@ -5,6 +5,7 @@
 
 import { Pool } from "pg";
 import bcrypt from "bcryptjs";
+import { cleanNickname } from "../text";
 
 // Dev'de HMR her modül yeniden yüklemesinde yeni Pool açmasın diye
 // globalThis üzerinde saklanır
@@ -67,6 +68,12 @@ UPDATE manifests SET
   WHERE y = 0;
 CREATE INDEX IF NOT EXISTS manifests_wall ON manifests (y, mo, bottled, boxed);
 CREATE INDEX IF NOT EXISTS manifests_ts ON manifests (ts);
+-- Otomatik şans (app/lib/server/autoLuck.ts): sistemin gönderdiği şans
+-- sayısı ve son gönderim anı. luck = auto_luck olması "bu manifest hiç
+-- dışarıdan şans almadı" demektir; ilk gerçek şansta eşitlik bozulur ve
+-- döngü kapanır
+ALTER TABLE manifests ADD COLUMN IF NOT EXISTS auto_luck INT NOT NULL DEFAULT 0;
+ALTER TABLE manifests ADD COLUMN IF NOT EXISTS auto_luck_at TIMESTAMPTZ;
 -- y/mo her ekleme/ts değişiminde tetikleyiciyle dolar
 CREATE OR REPLACE FUNCTION mw_set_ym() RETURNS trigger AS $$
 BEGIN
@@ -346,6 +353,24 @@ async function seedAdmins(p: Pool) {
   );
 }
 
+// Rumuzda emoji artık kabul edilmiyor (metinde serbest). Kural konmadan
+// önce yazılmış rumuzlardaki emojiler tek seferlik temizlenir; ayar
+// bayrağı sayesinde bir daha koşmaz. Postgres regex'i emoji sınıfını
+// tanımadığı için ayıklama JS tarafında yapılır
+async function stripNicknameEmoji(p: Pool) {
+  if (await getSetting(p, "nickEmojiStripped", false)) return;
+  const { rows } = await p.query("SELECT code, name FROM manifests");
+  for (const r of rows as { code: string; name: string }[]) {
+    const clean = cleanNickname(r.name);
+    if (clean !== r.name)
+      await p.query("UPDATE manifests SET name = $1 WHERE code = $2", [
+        clean,
+        r.code,
+      ]);
+  }
+  await setSetting(p, "nickEmojiStripped", true);
+}
+
 // Şema + seed süreç başına bir kez koşar; tüm route'lar bunu bekler
 export async function getDb(): Promise<Pool> {
   const p = pool();
@@ -355,6 +380,7 @@ export async function getDb(): Promise<Pool> {
       await seed(p);
       await seedSponsors(p);
       await seedAdmins(p);
+      await stripNicknameEmoji(p);
     })();
   }
   await g.mwInit;
