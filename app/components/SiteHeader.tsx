@@ -220,31 +220,10 @@ export default function SiteHeader({
                     ×
                   </button>
                 </div>
-                {/* Sıralama: (girişsizse Sen de yaz!) > Hesabım / Giriş Yap >
-                    Merak Ettikleriniz > Bize Yazın > Instagram — alt alta */}
+                {/* Sıralama: Hesabım / Giriş Yap > Merak Ettikleriniz >
+                    Bize Yazın > Instagram — hepsi alt alta. Yazma çağrısı
+                    burada yok: duvardaki mor buton zaten o işi görüyor */}
                 <nav className="flex-1 space-y-1 px-3 py-3">
-                  {/* Menüyü açan girişsiz ziyaretçi ilk bunu görsün:
-                      "nereden yazıyoruz" en çok gelen geri bildirimdi */}
-                  {!me && (
-                    <a
-                      href="/uye"
-                      className="mb-2 flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-[15px] font-extrabold text-white shadow-md transition-colors hover:bg-violet-700"
-                    >
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="h-4.5 w-4.5 shrink-0"
-                      >
-                        <path d="M12 20h9" />
-                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
-                      </svg>
-                      Sen de yaz!
-                    </a>
-                  )}
                   <a
                     href={me ? "/panel" : "/uye"}
                     className="flex items-center gap-2.5 rounded-xl border-2 border-violet-500 px-4 py-3 text-[15px] font-bold text-neutral-900 transition-colors hover:bg-violet-50"
