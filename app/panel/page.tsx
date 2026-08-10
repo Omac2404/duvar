@@ -1966,23 +1966,24 @@ export default function PanelPage() {
               açıkça anlatılır — genel/süresiz dilek yazanlar da çoktu */}
           {viewY === nowYear && (
             <div
-              className={`mb-4 rounded-2xl border px-5 py-4 ${
+              className={`mb-4 rounded-2xl border px-5 py-5 text-center ${
                 quotaLeft > 0
                   ? "border-amber-200 bg-amber-50/70"
                   : "border-neutral-200 bg-neutral-50"
               }`}
             >
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                <p
-                  className={`text-[22px] font-extrabold leading-tight max-[520px]:text-[19px] ${
-                    quotaLeft > 0 ? "text-amber-700" : "text-neutral-500"
-                  }`}
-                >
-                  {quotaLeft > 0
-                    ? `Bu sene ${quotaLeft} manifest hakkın kaldı`
-                    : `Bu senenin ${QUOTA} hakkını da kullandın`}
-                </p>
-                {/* Doldukça sönen noktalar: kaç hak kaldığı bir bakışta */}
+              {/* Başlık */}
+              <p
+                className={`text-[22px] font-extrabold leading-tight max-[520px]:text-[19px] ${
+                  quotaLeft > 0 ? "text-amber-700" : "text-neutral-500"
+                }`}
+              >
+                {quotaLeft > 0
+                  ? `Bu sene ${quotaLeft} manifest hakkın kaldı`
+                  : `Bu senenin ${QUOTA} hakkını da kullandın`}
+              </p>
+              {/* Kalan hak — doldukça sönen noktalar, bir bakışta durum */}
+              <div className="mt-2 flex items-center justify-center gap-2.5">
                 <span className="flex items-center gap-1.5" aria-hidden>
                   {Array.from({ length: QUOTA }, (_, i) => (
                     <span
@@ -2002,10 +2003,11 @@ export default function PanelPage() {
                   kullandın
                 </span>
               </div>
-              <p className="mt-2 text-[13px] leading-relaxed text-neutral-600">
+              {/* Konsept açıklaması */}
+              <p className="mx-auto mt-3 max-w-xl text-[13px] leading-relaxed text-neutral-600">
                 Her yeni sene <strong>3 manifest hakkın</strong> olur. Buraya{" "}
-                <strong>{viewY} yılından beklentilerini</strong> yazarsın —
-                yıl sonunda gerçekleşenleri işaretleyip geri dönüp
+                <strong>{viewY} yılından beklentilerini</strong> yazarsın.
+                Yıl sonunda gerçekleşenleri işaretleyip geri dönüp
                 okuyabilirsin.
               </p>
             </div>

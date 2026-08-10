@@ -6,6 +6,7 @@ import { getLegal, getSeo } from "./lib/server/content";
 import { sessionUserId } from "./lib/server/session";
 import type { QuotaInfo } from "./lib/quota";
 import HeadCode from "./components/HeadCode";
+import SiteFooter from "./components/SiteFooter";
 import BottomNav from "./components/BottomNav";
 import CookieConsent from "./components/CookieConsent";
 
@@ -82,8 +83,9 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col">
         <HeadCode code={headCode} />
         {children}
-        {/* Yasal sayfa linkleri artık alt barda değil menüde: yüzen alt
-            menüyle alt alta gelince ikisi de kullanılamaz oluyordu */}
+        {/* Yasal link barı yalnızca geniş ekranda; dar ekranda aynı
+            linkler hamburger menünün altında (yüzen menüyle çakışmasın) */}
+        <SiteFooter />
         {/* Yüzen alt menü + duvarda "Sen de yaz!" butonu */}
         <BottomNav initialLoggedIn={loggedIn} initialQuota={quota} />
         <CookieConsent text={cookieBanner} />

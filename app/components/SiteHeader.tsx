@@ -147,29 +147,6 @@ export default function SiteHeader({
         >
           Bize Yazın
         </a>
-        {/* Yasal sayfalar — sayfa altındaki ince bar yüzen alt menüyle
-            çakıştığı için kaldırıldı; erişilebilir kalsınlar diye geniş
-            ekranda buraya, dar ekranda hamburger menünün altına kondu */}
-        <span className="flex flex-col leading-tight max-[900px]:hidden">
-          <a
-            href="/gizlilik"
-            className="whitespace-nowrap px-1.5 text-[10px] font-medium text-neutral-400 transition-colors hover:text-neutral-700"
-          >
-            Gizlilik ve KVKK
-          </a>
-          <a
-            href="/cerez-politikasi"
-            className="whitespace-nowrap px-1.5 text-[10px] font-medium text-neutral-400 transition-colors hover:text-neutral-700"
-          >
-            Çerez Politikası
-          </a>
-          <a
-            href="/kullanim-kosullari"
-            className="whitespace-nowrap px-1.5 text-[10px] font-medium text-neutral-400 transition-colors hover:text-neutral-700"
-          >
-            Kullanım Koşulları
-          </a>
-        </span>
         {/* Üyelik butonu — mobildeki ile aynı dil: mor çerçeve + kişi ikonu */}
         <a
           href={me ? "/panel" : "/uye"}

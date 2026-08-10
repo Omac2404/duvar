@@ -132,10 +132,16 @@ export default function BottomNav({
 
   return (
     <>
-      {/* Yüzen bar içeriğin son satırını örtmesin diye ayrılan pay */}
+      {/* Yüzen öğeler içeriğin son satırını örtmesin diye ayrılan pay.
+          Menü yalnızca dar ekranda olduğundan geniş ekranda yalnızca
+          butonun payı kadar (buton yoksa hiç) boşluk bırakılır */}
       <div
         aria-hidden
-        className={`shrink-0 ${showCta ? "h-[128px]" : "h-[76px]"}`}
+        className={`shrink-0 ${
+          showCta
+            ? "h-[114px] min-[900px]:h-[76px]"
+            : "h-[68px] min-[900px]:h-0"
+        }`}
       />
 
       {/* Yazma çağrısı — barın hemen üstünde, arada küçük bir boşlukla.
@@ -146,7 +152,7 @@ export default function BottomNav({
       {showCta && (
         <a
           href={!loggedIn ? "/uye" : quotaFull ? "/panel" : "/panel?yaz=1"}
-          className="fixed bottom-[74px] left-1/2 z-[1420] -translate-x-1/2"
+          className="fixed bottom-[64px] left-1/2 z-[1420] -translate-x-1/2 min-[900px]:bottom-5"
         >
           <span className="relative flex">
             {!loggedIn && (
@@ -176,8 +182,10 @@ export default function BottomNav({
         </a>
       )}
 
-      {/* Yüzen menü — kenarlara yaslanmaz, ortada dar bir ada gibi durur */}
-      <nav className="fixed bottom-[max(10px,env(safe-area-inset-bottom))] left-1/2 z-[1410] flex w-[min(94vw,420px)] -translate-x-1/2 items-stretch gap-1 rounded-full border border-neutral-200/80 bg-white/95 p-1.5 shadow-[0_8px_28px_rgba(0,0,0,0.14)] backdrop-blur">
+      {/* Yüzen menü — kenarlara yaslanmaz, ortada dar bir ada gibi durur.
+          Yalnızca dar ekranda: geniş ekranda aynı bağlantılar zaten
+          header'da duruyor, altta ikinci bir menü fazlalık oluyordu */}
+      <nav className="fixed bottom-[max(10px,env(safe-area-inset-bottom))] left-1/2 z-[1410] flex w-[min(94vw,420px)] -translate-x-1/2 items-stretch gap-1 rounded-full border border-neutral-200/80 bg-white/95 p-1.5 shadow-[0_8px_28px_rgba(0,0,0,0.14)] backdrop-blur min-[900px]:hidden">
         <Link
           href="/merak-edilenler"
           className={`${item} ${pathname === "/merak-edilenler" ? active : idle}`}
