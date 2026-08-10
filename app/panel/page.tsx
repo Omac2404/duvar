@@ -1940,7 +1940,8 @@ export default function PanelPage() {
                 type="button"
                 onClick={openWrite}
                 disabled={quotaLeft === 0}
-                className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-neutral-800 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-neutral-700 active:scale-[0.98] disabled:cursor-default disabled:opacity-40 max-[520px]:order-4 max-[520px]:ml-0 max-[520px]:mt-1"
+                // Duvardaki "Sen de yaz!" butonuyla aynı mor
+                className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-violet-600 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-violet-700 active:scale-[0.98] disabled:cursor-default disabled:opacity-40 max-[520px]:order-4 max-[520px]:ml-0 max-[520px]:mt-1"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -1965,45 +1966,52 @@ export default function PanelPage() {
               konsept ("her sene 3 hak, o yıldan beklentilerin") burada
               açıkça anlatılır — genel/süresiz dilek yazanlar da çoktu */}
           {viewY === nowYear && (
-            <div
-              className={`mb-4 rounded-2xl border px-5 py-5 text-center ${
-                quotaLeft > 0
-                  ? "border-amber-200 bg-amber-50/70"
-                  : "border-neutral-200 bg-neutral-50"
-              }`}
-            >
-              {/* Başlık */}
-              <p
-                className={`text-[22px] font-extrabold leading-tight max-[520px]:text-[19px] ${
-                  quotaLeft > 0 ? "text-amber-700" : "text-neutral-500"
-                }`}
-              >
+            <div className="mb-4 rounded-2xl border border-neutral-200 bg-white px-5 py-5 text-center shadow-sm">
+              {/* Başlık — logo moru */}
+              <p className="text-[22px] font-extrabold leading-tight text-violet-700 max-[520px]:text-[19px]">
                 {quotaLeft > 0
                   ? `Bu sene ${quotaLeft} manifest hakkın kaldı`
                   : `Bu senenin ${QUOTA} hakkını da kullandın`}
               </p>
-              {/* Kalan hak — doldukça sönen noktalar, bir bakışta durum */}
-              <div className="mt-2 flex items-center justify-center gap-2.5">
-                <span className="flex items-center gap-1.5" aria-hidden>
-                  {Array.from({ length: QUOTA }, (_, i) => (
+              {/* Hak topları — kullanılmamış hak dolu mor, kullanılmış olan
+                  onay işaretli. Sayıyı saymadan durumu göstermeleri için
+                  başlığın hemen altında, ortada dururlar */}
+              <div className="mt-3 flex items-center justify-center gap-2">
+                {Array.from({ length: QUOTA }, (_, i) =>
+                  i < usedQuota ? (
                     <span
                       key={i}
-                      className={`h-2.5 w-2.5 rounded-full ${
-                        i < usedQuota
-                          ? "bg-neutral-300"
-                          : "bg-amber-400 ring-2 ring-amber-200"
-                      }`}
+                      aria-hidden
+                      className="flex h-6 w-6 items-center justify-center rounded-full border border-violet-200 bg-violet-100 text-violet-600"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="h-3.5 w-3.5"
+                      >
+                        <path d="M20 6 9 17l-5-5" />
+                      </svg>
+                    </span>
+                  ) : (
+                    <span
+                      key={i}
+                      aria-hidden
+                      className="h-6 w-6 rounded-full bg-violet-600 ring-2 ring-violet-200"
                     />
-                  ))}
-                </span>
-                <span className="text-xs font-semibold text-neutral-500">
-                  {/* Admin elle manifest eklediyse kullanım hakkı aşabilir;
-                      "3 haktan 5 tanesi" yazmasın diye kırpılır */}
-                  {QUOTA} haktan {Math.min(usedQuota, QUOTA)} tanesini
-                  kullandın
-                </span>
+                  ),
+                )}
               </div>
-              {/* Konsept açıklaması */}
+              {/* Topların altındaki başlık */}
+              <p className="mt-2 text-xs font-semibold text-neutral-500">
+                {/* Admin elle manifest eklediyse kullanım hakkı aşabilir;
+                    "3 haktan 5 tanesi" yazmasın diye kırpılır */}
+                {QUOTA} haktan {Math.min(usedQuota, QUOTA)} tanesini kullandın
+              </p>
+              {/* Genel açıklama */}
               <p className="mx-auto mt-3 max-w-xl text-[13px] leading-relaxed text-neutral-600">
                 Her yeni sene <strong>3 manifest hakkın</strong> olur. Buraya{" "}
                 <strong>{viewY} yılından beklentilerini</strong> yazarsın.
