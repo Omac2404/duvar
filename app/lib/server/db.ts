@@ -6,6 +6,7 @@
 import { Pool } from "pg";
 import bcrypt from "bcryptjs";
 import { cleanNickname } from "../text";
+import { seedWallManifests } from "./seedWall";
 
 // Dev'de HMR her modül yeniden yüklemesinde yeni Pool açmasın diye
 // globalThis üzerinde saklanır
@@ -380,6 +381,7 @@ export async function getDb(): Promise<Pool> {
       await seed(p);
       await seedSponsors(p);
       await seedAdmins(p);
+      await seedWallManifests(p);
       await stripNicknameEmoji(p);
     })();
   }
