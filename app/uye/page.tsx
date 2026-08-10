@@ -350,10 +350,38 @@ export default function AuthPage() {
       {/* Duvara dönüş */}
       <a
         href="/"
-        className="mb-8 flex items-center gap-2 text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-700"
+        className="mb-5 flex items-center gap-2 text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-700"
       >
         <span aria-hidden>←</span> Manifest Duvarı&apos;na dön
       </a>
+
+      {/* Neden buradasın — duvardaki "Sen de yaz!" butonuyla aynı mor dil.
+          Yalnızca giriş/kayıt ekranında; kod doğrulama ve şifre sıfırlama
+          adımlarında konuyla ilgisi kalmıyor */}
+      {(mode === "login" || mode === "register") && (
+        <div className="mb-5 flex w-full max-w-md items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-5 py-3.5 shadow-[0_6px_20px_rgba(124,58,237,0.12)]">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-[18px] w-[18px]"
+            >
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+            </svg>
+          </span>
+          <p className="text-[15px] font-semibold leading-snug text-violet-900">
+            Manifest yazabilmek için{" "}
+            <span className="font-extrabold text-violet-700">
+              üye olmalısınız
+            </span>
+          </p>
+        </div>
+      )}
 
       {/* Kart — zarf esintili: üstte pastel kapak şeridi */}
       <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-[0_12px_40px_rgba(0,0,0,0.1)]">
