@@ -2014,9 +2014,10 @@ export default function PanelPage() {
               {/* Genel açıklama */}
               <p className="mx-auto mt-3 max-w-xl text-[13px] leading-relaxed text-neutral-600">
                 Her yeni sene <strong>3 manifest hakkın</strong> olur. Buraya{" "}
-                <strong>{viewY} yılından beklentilerini</strong> yazarsın.
-                Yıl sonunda gerçekleşenleri işaretleyip geri dönüp
-                okuyabilirsin.
+                <strong>{viewY} yılından beklentilerini</strong>{" "}
+                yazarsın. Bir manifesti &quot;gerçekleşti&quot; olarak
+                işaretlersen şans yerine artık <strong>tebrik</strong>{" "}
+                toplarsın.
               </p>
             </div>
           )}
@@ -2064,7 +2065,7 @@ export default function PanelPage() {
             {/* Amaç — başarımların ruhunu anlatan kısa metin (ss105) */}
             <section className="mt-4 overflow-hidden rounded-2xl bg-white shadow-sm">
               <div className="h-1.5 w-full bg-[linear-gradient(90deg,#FFC8CD,#FFE8CD,#FFFFCD,#CDFFD8,#CDEAFF,#EBCDFF)]" />
-              <div className="px-6 py-5">
+              <div className="px-6 py-5 text-center">
                 <p
                   className="text-2xl text-neutral-800"
                   style={{ fontFamily: "var(--font-caveat)" }}
@@ -2075,13 +2076,12 @@ export default function PanelPage() {
                   Duvarda sana dilenen her şans, hayaline omuz veren küçük bir
                   iyiliktir. İnsanlar zarfını açıp şans diledikçe evrene
                   bıraktığın niyet topluluğun pozitif enerjisiyle büyür;
-                  manifestin önce süsünü, sonra parlak rengini kazanır, şişeye
-                  konur, en sonunda hediye kutusuna taşınır. Her etapta zarfın
-                  binlerce zarfın arasından biraz daha sıyrılır: sticker'ı
-                  yapıştırdıkça, rengi parladıkça, şişeye ve kutuya taşındıkça
-                  duvarda çok daha fazla fark edilir, çok daha fazla açılır ve
-                  daha çok şans toplar. Sen de başkalarının zarfını açıp şans
-                  dileyerek bu enerjiyi çoğaltabilirsin. 🌟
+                  manifestin önce sticker&apos;ını, sonra parlak rengini
+                  kazanır, şişeye konur, en sonunda hediye kutusuna taşınır.
+                  Her etapta zarfın binlerce zarfın arasından biraz daha
+                  sıyrılır ve daha fazla fark edilir. Daha fazla açılır ve daha
+                  çok şans toplar. Sen de başkalarının zarfını açıp şans
+                  dileyerek bu enerjiyi çoğaltabilirsin.
                 </p>
               </div>
             </section>

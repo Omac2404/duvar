@@ -31,7 +31,7 @@ export async function GET(req: Request) {
   // (dilim aralıkları ve yerleşim yüksekliği buna göre hesaplanır)
   const slots = await wallSponsorSlots(db, counts.rows[0].plain as number);
   return Response.json({
-    seed: wallSeed(),
+    seed: await wallSeed(db),
     plain: (counts.rows[0].plain as number) + slots.length,
     total: counts.rows[0].total,
     years: years.rows.map((r) => r.y as number),

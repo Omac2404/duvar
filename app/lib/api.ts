@@ -502,6 +502,13 @@ export function adminResetMembers() {
   return post<{ ok: boolean }>("/api/admin/reset");
 }
 
+// Duvar sırasını elle karıştırır (gece 00:00'ı beklemeden)
+export function adminShuffleWall() {
+  return post<{ ok: boolean; shuffles?: number; seed?: string }>(
+    "/api/admin/shuffle",
+  );
+}
+
 // ── Admin: Genel Bakış istatistikleri ───────────────────────────────────
 
 export type AdminStats = {

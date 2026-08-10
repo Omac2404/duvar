@@ -49,6 +49,7 @@ import {
   adminRemoveReport,
   adminReports,
   adminResetMembers,
+  adminShuffleWall,
   adminSaveSettings,
   adminSaveSponsor,
   adminSaveUser,
@@ -634,6 +635,10 @@ export default function AdminPage() {
   // Reklam alanları + test modu bayrakları (duvar sayfası bunları okur)
   const [ads, setAds] = useState(false);
   const [testMode, setTestMode] = useState(false);
+  // Duvarı elle karıştır — istek sürerken buton kilitlenir, bitince kısa
+  // süre onay yazısı gösterilir
+  const [shuffling, setShuffling] = useState(false);
+  const [shuffled, setShuffled] = useState(false);
 
   // Sponsor kampanyaları (Reklam sekmesi) — düzenleyici + liste
   const [sponsors, setSponsors] = useState<SponsorCampaign[]>([]);
@@ -3219,6 +3224,38 @@ export default function AdminPage() {
                       testMode ? "left-[22px]" : "left-0.5"
                     }`}
                   />
+                </button>
+              </div>
+              {/* Duvarı elle karıştır — normalde sıra her gece 00:00'da
+                  kendiliğinden değişir, bu buton beklemeden değiştirir */}
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-violet-50/70 px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-neutral-700">
+                    Duvarı karıştır
+                  </p>
+                  <p className="text-xs text-neutral-400">
+                    Zarfların yerleri gece 12&apos;yi beklemeden hemen yeniden
+                    dağılır. Şişe, kutu ve sponsor zarflarının konumları da
+                    değişir; içerik ve sayaçlar etkilenmez.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={shuffling}
+                  onClick={async () => {
+                    setShuffling(true);
+                    const r = await adminShuffleWall();
+                    setShuffling(false);
+                    setShuffled(r.ok);
+                    if (r.ok) setTimeout(() => setShuffled(false), 2500);
+                  }}
+                  className="cursor-pointer rounded-xl bg-violet-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-violet-700 disabled:cursor-default disabled:opacity-50"
+                >
+                  {shuffling
+                    ? "Karıştırılıyor…"
+                    : shuffled
+                      ? "Karıştırıldı ✓"
+                      : "Şimdi karıştır"}
                 </button>
               </div>
               <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-red-50/60 px-4 py-3">

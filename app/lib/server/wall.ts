@@ -6,7 +6,7 @@
 
 import type { Pool } from "pg";
 import type { MemberManifest } from "../auth";
-import { toClientManifest, type ManifestRow } from "./db";
+import { getSetting, toClientManifest, type ManifestRow } from "./db";
 import {
   activeSponsors,
   sponsorItem,
@@ -14,9 +14,16 @@ import {
   type SponsorSlot,
 } from "./sponsors";
 
-export function wallSeed(): string {
-  return String(Math.floor((Date.now() + 3 * 3600 * 1000) / 86400000));
+// Tohum: gün sayısı + admin'in elle karıştırma sayacı. Gün sayısı her
+// gece 00:00'da (TR) bir artar; admin "Duvarı karıştır" dediğinde sayaç
+// artar ve sıra günü beklemeden tamamen yeniden dağılır
+export async function wallSeed(db: Pool): Promise<string> {
+  const day = Math.floor((Date.now() + 3 * 3600 * 1000) / 86400000);
+  const nudge = Number(await getSetting(db, WALL_SHUFFLE_KEY, 0)) || 0;
+  return String(day + nudge);
 }
+
+export const WALL_SHUFFLE_KEY = "wallShuffle";
 
 // Yıl/ay filtresi (0 = tümü) — tüm duvar sorguları aynı koşulu kullanır
 export function filterSql(y: number, mo: number) {
@@ -43,7 +50,7 @@ export async function wallSponsorSlots(
   db: Pool,
   plain: number,
 ): Promise<SponsorSlot[]> {
-  return sponsorSlots(await activeSponsors(db), plain, wallSeed());
+  return sponsorSlots(await activeSponsors(db), plain, await wallSeed(db));
 }
 
 async function plainSlice(
@@ -58,7 +65,7 @@ async function plainSlice(
     `SELECT * FROM manifests
      WHERE ${f.cond} AND NOT bottled AND NOT boxed
      ORDER BY md5($3 || code) OFFSET $4 LIMIT $5`,
-    [...f.params, wallSeed(), from, Math.max(0, count)],
+    [...f.params, await wallSeed(db), from, Math.max(0, count)],
   );
   return rows as ManifestRow[];
 }
@@ -77,7 +84,7 @@ export async function wallSlice(
     return (await plainSlice(db, y, mo, from, to - from)).map(toClientManifest);
 
   const plain = await plainCount(db, y, mo);
-  const slots = sponsorSlots(sponsors, plain, wallSeed());
+  const slots = sponsorSlots(sponsors, plain, await wallSeed(db));
 
   // from'dan önceki sponsor sayısı (ikili arama) → veri ofseti kayması
   let lo = 0;
@@ -117,7 +124,7 @@ export async function wallSlice(
 // Şişe ve kutular görece nadirdir (150+/250+ şans) — tam liste döner
 export async function wallExtras(db: Pool, y: number, mo: number) {
   const f = filterSql(y, mo);
-  const seed = wallSeed();
+  const seed = await wallSeed(db);
   const [bottles, gifts] = await Promise.all([
     db.query(
       `SELECT * FROM manifests WHERE ${f.cond} AND bottled AND NOT boxed

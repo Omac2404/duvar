@@ -41,7 +41,7 @@ export async function GET(req: Request) {
       `SELECT COUNT(*)::int AS n FROM manifests
        WHERE ${f.cond} AND NOT bottled AND NOT boxed
          AND md5($3 || code) < md5($3 || $4)`,
-      [...f.params, wallSeed(), m.code],
+      [...f.params, await wallSeed(db), m.code],
     );
     rank = r.rows[0].n as number;
     // Araya giren sponsor zarfları sırayı kaydırır → görüntü uzayına çevir

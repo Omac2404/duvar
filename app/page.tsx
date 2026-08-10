@@ -2096,12 +2096,15 @@ export default function Home() {
     [meta],
   );
 
-  // Günlük karıştırma tohumu: her gece 00:00'da (Türkiye saati) değişir.
-  // Sıralama satılmaz; tüm konumlar her gün bu tohumla yeniden dağıtılır
-  // (sunucudaki wallSeed ile aynı formül)
+  // Karıştırma tohumu sunucudan gelir (meta.seed): gün sayısı + admin'in
+  // elle karıştırma sayacı. Şişe/kutu konumları da bununla dağıldığı için
+  // admin "Duvarı karıştır" dediğinde onlar da yer değiştirir. Meta henüz
+  // inmediyse aynı formülün istemci karşılığı kullanılır
   const daySeed = useMemo(
-    () => Math.floor((Date.now() + 3 * 3600 * 1000) / 86400000),
-    [],
+    () =>
+      Number(meta?.seed) ||
+      Math.floor((Date.now() + 3 * 3600 * 1000) / 86400000),
+    [meta],
   );
 
   // Filtre yılları: veritabanındaki yıllar + etkin yıl (yeni yılın ilk
