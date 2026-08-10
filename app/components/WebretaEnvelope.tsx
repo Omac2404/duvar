@@ -1,0 +1,152 @@
+"use client";
+
+// ── Webreta zarfı — duvardaki tek sabit zarf ────────────────────────────
+// Günlük karıştırmaya girmez, yeri hiç değişmez: duvarın üst bandında,
+// yatayda ortada durur; masaüstünde de mobilde de ilk ekranda görünür.
+// Boyutu sponsor zarfıyla aynıdır (envW * 1.35). Rengi Webreta mavisinin
+// (#3c639f) parlak gradyanı, üzerinde beyaz amblem ve "Webreta Web
+// Teknolojileri" yazısı. Admin panelden kapatılabilir (settings: webreta).
+
+import { useEffect, useState } from "react";
+
+export const WEBRETA_TEXT =
+  "Çoğu dilek söylenmeden kaybolur. Bu duvarı kaybolmasınlar diye yaptık. " +
+  "Buraya yazılan her dileğin bir gün gerçek olması ve duvarın herkese iyi " +
+  "gelmesi dileğiyle. Geliştirici ekipten selamlar!";
+
+const BLUE = "#3c639f";
+// Parlak gradyan: açık maviden koyuya, ortada ışık bandı
+const BODY_BG =
+  "linear-gradient(135deg, #5b86c6 0%, #3c639f 46%, #2b4a7d 78%, #4370b4 100%)";
+const FLAP_BG = "linear-gradient(180deg, #4f79b8, #2f527f)";
+
+function Amblem({ className }: { className?: string }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/webreta-amblem.png"
+      alt="Webreta"
+      className={className}
+      draggable={false}
+    />
+  );
+}
+
+// Duvardaki zarf — tıklanınca mektup açılır
+export function WebretaCard({
+  x,
+  y,
+  w,
+  z,
+  onOpen,
+}: {
+  x: number;
+  y: number;
+  w: number;
+  z: number;
+  onOpen: () => void;
+}) {
+  return (
+    <div className="absolute" style={{ left: x, top: y, width: w, zIndex: z }}>
+      <p
+        className="mb-1 truncate text-center font-semibold text-[#2f527f]"
+        style={{ fontSize: Math.max(9, Math.round(w / 13)) }}
+      >
+        Webreta Web Teknolojileri
+      </p>
+      <button
+        type="button"
+        onClick={onOpen}
+        style={{ background: BODY_BG }}
+        className="relative block aspect-[4/3] w-full cursor-pointer touch-manipulation rounded-[3px] shadow-[0_6px_20px_rgba(44,74,125,0.45)] transition-all duration-200 hover:scale-110 hover:shadow-[0_14px_34px_rgba(44,74,125,0.55)]"
+        aria-label="Webreta Web Teknolojileri — mesajı oku"
+      >
+        {/* Kapak üçgeni */}
+        <span
+          className="absolute inset-x-0 top-0 h-[56%]"
+          style={{
+            clipPath: "polygon(0 0, 100% 0, 50% 100%)",
+            background: FLAP_BG,
+          }}
+        />
+        {/* Parlaklık — üstten inen ışık */}
+        <span
+          className="pointer-events-none absolute inset-0 rounded-[3px]"
+          style={{
+            background:
+              "linear-gradient(160deg, rgba(255,255,255,0.34) 0%, rgba(255,255,255,0.06) 38%, rgba(255,255,255,0) 60%)",
+          }}
+        />
+        {/* Beyaz amblem — kapağın altında, zarfın ortasında */}
+        <Amblem className="pointer-events-none absolute left-1/2 top-[62%] w-[42%] -translate-x-1/2 -translate-y-1/2" />
+      </button>
+    </div>
+  );
+}
+
+// Mektup — zarfa tıklanınca açılan pencere
+export function WebretaPopup({ onClose }: { onClose: () => void }) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setShown(true), 10);
+    const onEsc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onEsc);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("keydown", onEsc);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[1700] flex items-center justify-center px-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black/45 backdrop-blur-[2px]" />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-[0_20px_60px_rgba(0,0,0,0.4)] transition-all duration-300"
+        style={{
+          transform: shown ? "translateY(0) scale(1)" : "translateY(18px) scale(0.96)",
+          opacity: shown ? 1 : 0,
+        }}
+      >
+        {/* Başlık bandı — zarfın rengiyle aynı parlak mavi */}
+        <div
+          className="flex items-center gap-3 px-6 py-5"
+          style={{ background: BODY_BG }}
+        >
+          <Amblem className="h-11 w-11 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-[15px] font-extrabold leading-tight text-white">
+              Webreta Web Teknolojileri
+            </p>
+            <p className="text-[11px] font-medium text-white/70">
+              Geliştirici ekip
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Kapat"
+            className="ml-auto flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/20 text-lg text-white transition-colors hover:bg-white/30"
+          >
+            ×
+          </button>
+        </div>
+        {/* Mektup */}
+        <div className="bg-[#fffdf5] px-7 py-6 max-[520px]:px-5">
+          <p className="text-[15px] leading-relaxed text-neutral-700">
+            {WEBRETA_TEXT}
+          </p>
+          <p
+            className="mt-4 text-right text-2xl"
+            style={{ fontFamily: "var(--font-caveat)", color: BLUE }}
+          >
+            Webreta
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -127,6 +127,7 @@ export type MarqueeSetting = { text: string; seconds: number };
 export type PublicSettings = {
   ads: boolean;
   testMode: boolean;
+  webreta: boolean; // duvardaki sabit Webreta zarfı sergileniyor mu
   googleClientId: string;
   smtpConfigured: boolean;
   instagram: InstagramSetting;
@@ -137,12 +138,14 @@ export type PublicSettings = {
 
 export async function fetchSettings(): Promise<PublicSettings> {
   try {
-    const res = await fetch("/api/settings");
+    // no-store: admin panelden değişen ayar anında yansısın
+    const res = await fetch("/api/settings", { cache: "no-store" });
     return await json<PublicSettings>(res);
   } catch {
     return {
       ads: false,
       testMode: false,
+      webreta: true,
       googleClientId: "",
       smtpConfigured: false,
       instagram: { text: "", url: "" },
@@ -159,7 +162,8 @@ export type FaqItem = { q: string; a: string };
 
 export async function fetchFaq(): Promise<FaqItem[]> {
   try {
-    const res = await fetch("/api/faq");
+    // no-store: admin SSS'i düzenlediği anda sayfada görünsün
+    const res = await fetch("/api/faq", { cache: "no-store" });
     return (await json<{ faq: FaqItem[] }>(res)).faq;
   } catch {
     return [];
@@ -431,6 +435,7 @@ export type AdminSettings = {
   mail: MailConfig;
   ads: boolean;
   testMode: boolean;
+  webreta: boolean;
   aiKey: string;
   aiEnabled: boolean;
   faq: FaqItem[];
@@ -484,6 +489,7 @@ export function adminSaveSettings(patch: {
   mail?: MailConfig;
   ads?: boolean;
   testMode?: boolean;
+  webreta?: boolean;
   aiKey?: string;
   aiEnabled?: boolean;
   faq?: FaqItem[];

@@ -635,6 +635,8 @@ export default function AdminPage() {
   // Reklam alanları + test modu bayrakları (duvar sayfası bunları okur)
   const [ads, setAds] = useState(false);
   const [testMode, setTestMode] = useState(false);
+  // Duvardaki sabit Webreta zarfı sergileniyor mu
+  const [webreta, setWebreta] = useState(true);
   // Duvarı elle karıştır — istek sürerken buton kilitlenir, bitince kısa
   // süre onay yazısı gösterilir
   const [shuffling, setShuffling] = useState(false);
@@ -791,6 +793,7 @@ export default function AdminPage() {
       if (s) {
         setAds(s.ads);
         setTestMode(s.testMode);
+        setWebreta(s.webreta !== false);
         setMailCfg(s.mail);
         setAiKey(s.aiKey ?? "");
         setAiEnabled(!!s.aiEnabled);
@@ -3226,6 +3229,37 @@ export default function AdminPage() {
                   />
                 </button>
               </div>
+              {/* Webreta zarfı — duvardaki tek sabit zarf, sergilenir/kapanır */}
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-sky-50/70 px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-neutral-700">
+                    Webreta zarfı
+                  </p>
+                  <p className="text-xs text-neutral-400">
+                    Duvarın üst bandında, yeri hiç değişmeyen mavi Webreta
+                    zarfı sergilenir. Kapatılırsa duvardan tamamen kalkar.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !webreta;
+                    setWebreta(next);
+                    void adminSaveSettings({ webreta: next });
+                  }}
+                  aria-label="Webreta zarfını sergile/kapat"
+                  className={`relative h-7 w-12 cursor-pointer rounded-full transition-colors ${
+                    webreta ? "bg-sky-600" : "bg-neutral-300"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${
+                      webreta ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+
               {/* Duvarı elle karıştır — normalde sıra her gece 00:00'da
                   kendiliğinden değişir, bu buton beklemeden değiştirir */}
               <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-violet-50/70 px-4 py-3">

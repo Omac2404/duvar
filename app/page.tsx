@@ -27,6 +27,7 @@ import {
   sponsorColor,
   type Envelope,
 } from "./lib/wallData";
+import { WebretaCard, WebretaPopup } from "./components/WebretaEnvelope";
 import {
   fetchMyReactions,
   fetchReportedCodes,
@@ -2023,6 +2024,9 @@ export default function Home() {
 
   // Reklam alanları — admin panelden açılıp kapatılır (backend ayarı)
   const [ads, setAds] = useState(false);
+  // Duvardaki sabit Webreta zarfı — admin panelden sergilenir/kapatılır
+  const [webretaOn, setWebretaOn] = useState(false);
+  const [webretaOpen, setWebretaOpen] = useState(false);
   // Kayan şerit — yazı ve tur süresi admin Ayarlar'dan; yazı boşsa gizli
   const [marquee, setMarquee] = useState<{ text: string; seconds: number }>({
     text: "",
@@ -2035,6 +2039,7 @@ export default function Home() {
   useEffect(() => {
     fetchSettings().then((s) => {
       setAds(s.ads);
+      setWebretaOn(s.webreta !== false);
       if (s.marquee) setMarquee(s.marquee);
       if (s.month) setNowMonth(s.month);
       if (s.year) {
@@ -2232,6 +2237,19 @@ export default function Home() {
       }
     }
 
+    // Webreta zarfı — duvardaki tek sabit zarf. Günlük karıştırmaya
+    // girmez: yatayda tam ortada, üst banttan bir satır aşağıda durur ki
+    // arama paneli örtmesin ve hem masaüstünde hem mobilde ilk ekranda
+    // görünsün. Boyutu sponsor zarfıyla aynı (envW * 1.35)
+    const webW = Math.round(m.envW * 1.35);
+    const webH = Math.round(webW * 0.75);
+    const webreta = {
+      w: webW,
+      h: webH,
+      x: Math.round((wrapperW - webW) / 2),
+      y: Math.round(topOffset + m.rowStep * 1.15),
+    };
+
     return {
       ...m,
       rows,
@@ -2242,6 +2260,7 @@ export default function Home() {
       gifts,
       giftW,
       giftH,
+      webreta,
       banners,
     };
   }, [meta, bottledEnvs, boxedEnvs, cols, vwPx, daySeed, ads]);
@@ -2389,13 +2408,42 @@ export default function Home() {
         p.x += dx * push;
         p.y += dy * push;
       }
+      // Webreta zarfı sabit durur, komşuları ona yer açar
+      if (webretaOn) {
+        const wb = m.webreta;
+        const wcx = wb.x + wb.w / 2;
+        const wcy = wb.y + wb.h / 2;
+        let dx = ex - wcx;
+        let dy = ey - wcy;
+        const d = Math.hypot(
+          dx / (wb.w / 2 + m.envW / 2 + 10),
+          dy / (wb.h / 2 + m.envH / 2 + 12),
+        );
+        if (d < 1) {
+          const len = Math.hypot(dx, dy) || 1;
+          dx /= len;
+          dy /= len;
+          const push = (1 - d) * m.envW * 0.42;
+          p.x += dx * push;
+          p.y += dy * push;
+        }
+      }
       // Kenarlarda simetrik hafif taşmaya izin ver
       p.x = Math.min(m.wrapperW - m.envW + 8, Math.max(-8, p.x));
       p.y = Math.max(2, p.y);
       out.push({ env, pos: p });
     }
     return out;
-  }, [meta, layout, range, cols, sliceVer, visibleBottles, visibleGifts]);
+  }, [
+    meta,
+    layout,
+    range,
+    cols,
+    sliceVer,
+    visibleBottles,
+    visibleGifts,
+    webretaOn,
+  ]);
 
   // Derin atlayışta (scrollbar'la 50 bin sıra ileri gibi) görünür dilim
   // henüz sunucudan gelmediyse kısa süreli yükleme örtüsü gösterilir
@@ -2825,6 +2873,17 @@ export default function Home() {
             </button>
           ))}
 
+          {/* Webreta zarfı — sabit yerinde, komşularının üstünde durur */}
+          {webretaOn && (
+            <WebretaCard
+              x={layout.webreta.x}
+              y={layout.webreta.y}
+              w={layout.webreta.w}
+              z={1010}
+              onOpen={() => setWebretaOpen(true)}
+            />
+          )}
+
           {renderedEnvs.map(({ env, pos }) => (
             <EnvelopeCard
               key={env.code}
@@ -2846,6 +2905,8 @@ export default function Home() {
           ))}
         </div>
       </section>
+
+      {webretaOpen && <WebretaPopup onClose={() => setWebretaOpen(false)} />}
 
       {/* Yükleme örtüsü — dilim beklerken logo + dönen halka */}
       <div

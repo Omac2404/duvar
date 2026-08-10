@@ -32,6 +32,7 @@ export async function GET() {
     mail: await getMailSettings(db),
     ads: await getSetting(db, "ads", false),
     testMode: await getSetting(db, "testMode", false),
+    webreta: await getSetting(db, "webreta", true),
     aiKey: await getSetting(db, "aiKey", ""),
     aiEnabled: await getSetting(db, "aiEnabled", false),
     faq: await getFaq(db),
@@ -51,6 +52,7 @@ export async function PUT(req: Request) {
     mail?: Partial<MailSettings>;
     ads?: boolean;
     testMode?: boolean;
+    webreta?: boolean;
     aiKey?: string;
     aiEnabled?: boolean;
     faq?: FaqItem[];
@@ -70,6 +72,8 @@ export async function PUT(req: Request) {
   if (body.ads !== undefined) await setSetting(db, "ads", !!body.ads);
   if (body.testMode !== undefined)
     await setSetting(db, "testMode", !!body.testMode);
+  if (body.webreta !== undefined)
+    await setSetting(db, "webreta", !!body.webreta);
   if (body.aiKey !== undefined)
     await setSetting(db, "aiKey", String(body.aiKey).trim());
   if (body.aiEnabled !== undefined)

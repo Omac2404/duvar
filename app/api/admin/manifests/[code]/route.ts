@@ -22,7 +22,23 @@ function reasonFor(category: ModCategory): string {
   );
 }
 
-// Şans gönderme — girilen miktar manifestin şansına eklenir
+// Gönderilen şansla birlikte eklenecek görüntülenme sayısı.
+// Zarfı açan herkes şans dilemez; şans gidip görüntülenme gitmeyince
+// "5 kişi şans dilemiş ama 3 kişi görmüş" gibi mantık hatası kalıyordu.
+// Katsayı 5x'ten başlar, gönderilen miktar büyüdükçe üstel olarak 10x'e
+// yaklaşır: küçük dokunuşlar sade kalır, büyük şans yağmuru daha çok
+// görüntülenme getirir. Sonuca ±%8 dalgalanma eklenir ki tam katı
+// olmasın (yine de asla 5x'in altına düşmez).
+export function viewsForLuck(add: number, jitter = Math.random()): number {
+  const factor = 5 + 5 * (1 - Math.exp(-add / 60));
+  const wobble = 0.92 + jitter * 0.16;
+  // Katsayı 5x-10x aralığının dışına taşmaz
+  const mult = Math.min(10, Math.max(5, factor * wobble));
+  return Math.max(add, Math.round(add * mult));
+}
+
+// Şans gönderme — girilen miktar manifestin şansına, orantılı bir
+// görüntülenme de görüntülenme sayacına eklenir
 export async function PUT(
   req: Request,
   { params }: { params: Promise<{ code: string }> },
@@ -35,15 +51,27 @@ export async function PUT(
   if (!Number.isFinite(add) || add < 1 || add > 100000)
     return bad("Geçersiz miktar.");
   const db = await getDb();
+  const addViews = viewsForLuck(add);
+  // GREATEST: eski kayıtlarda görüntülenme şansın altında kalmışsa bu
+  // güncelleme onu da düzeltir, sayaç asla şansın altında kalmaz
   const r = await db.query(
-    "UPDATE manifests SET luck = luck + $1 WHERE code = $2 RETURNING luck",
-    [add, code],
+    `UPDATE manifests
+       SET luck = luck + $1,
+           views = GREATEST(views + $2, luck + $1)
+     WHERE code = $3
+     RETURNING luck, views`,
+    [add, addViews, code],
   );
   if (r.rows.length === 0) return bad("Manifest bulunamadı.", 404);
   // Eşik geçildiyse sahibine başarım maili (beklenmez)
   const newLuck = Number(r.rows[0].luck);
   void checkLuckMilestones(db, code, newLuck - add, newLuck).catch(() => {});
-  return Response.json({ ok: true, luck: r.rows[0].luck });
+  return Response.json({
+    ok: true,
+    luck: r.rows[0].luck,
+    views: r.rows[0].views,
+    addedViews: addViews,
+  });
 }
 
 export async function POST(
