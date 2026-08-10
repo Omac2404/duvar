@@ -32,33 +32,33 @@ function Amblem({ className }: { className?: string }) {
   );
 }
 
-// Duvardaki zarf — tıklanınca mektup açılır
+// Duvardaki zarf — sponsor zarflarıyla aynı dil: hafifçe eğik durur,
+// amblem ve yazı zarfın üstündedir (ayrı bir başlık satırı yok).
+// Tıklanınca mektup açılır
 export function WebretaCard({
   x,
   y,
   w,
+  rot,
   z,
   onOpen,
 }: {
   x: number;
   y: number;
   w: number;
+  rot: number;
   z: number;
   onOpen: () => void;
 }) {
+  // Zarf içi ölçüler genişlikle orantılı — diğer zarflardaki fs ile aynı
+  const fs = w / 172;
   return (
     <div className="absolute" style={{ left: x, top: y, width: w, zIndex: z }}>
-      <p
-        className="mb-1 truncate text-center font-semibold text-[#2f527f]"
-        style={{ fontSize: Math.max(9, Math.round(w / 13)) }}
-      >
-        Webreta Web Teknolojileri
-      </p>
       <button
         type="button"
         onClick={onOpen}
-        style={{ background: BODY_BG }}
-        className="relative block aspect-[4/3] w-full cursor-pointer touch-manipulation rounded-[3px] shadow-[0_6px_20px_rgba(44,74,125,0.45)] transition-all duration-200 hover:scale-110 hover:shadow-[0_14px_34px_rgba(44,74,125,0.55)]"
+        style={{ background: BODY_BG, rotate: `${rot}deg` }}
+        className="relative block aspect-[4/3] w-full cursor-pointer touch-manipulation rounded-[3px] shadow-[0_6px_20px_rgba(44,74,125,0.45)] transition-all duration-200 hover:scale-125 hover:shadow-[0_14px_34px_rgba(44,74,125,0.55)]"
         aria-label="Webreta Web Teknolojileri — mesajı oku"
       >
         {/* Kapak üçgeni */}
@@ -77,8 +77,15 @@ export function WebretaCard({
               "linear-gradient(160deg, rgba(255,255,255,0.34) 0%, rgba(255,255,255,0.06) 38%, rgba(255,255,255,0) 60%)",
           }}
         />
-        {/* Beyaz amblem — kapağın altında, zarfın ortasında */}
-        <Amblem className="pointer-events-none absolute left-1/2 top-[62%] w-[42%] -translate-x-1/2 -translate-y-1/2" />
+        {/* Beyaz amblem — sponsor logosuyla aynı yerde */}
+        <Amblem className="pointer-events-none absolute left-1/2 top-[66%] w-[34%] -translate-x-1/2 -translate-y-1/2 select-none" />
+        {/* Ad — sponsor zarfındaki gibi zarfın alt kenarında */}
+        <span
+          className="absolute inset-x-0 bottom-[4%] truncate px-1 text-center font-hand leading-none font-semibold text-white"
+          style={{ fontSize: Math.max(9.5, 11.5 * fs) }}
+        >
+          Webreta Web Teknolojileri
+        </span>
       </button>
     </div>
   );

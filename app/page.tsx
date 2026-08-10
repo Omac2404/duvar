@@ -2238,16 +2238,19 @@ export default function Home() {
     }
 
     // Webreta zarfı — duvardaki tek sabit zarf. Günlük karıştırmaya
-    // girmez: yatayda tam ortada, üst banttan bir satır aşağıda durur ki
-    // arama paneli örtmesin ve hem masaüstünde hem mobilde ilk ekranda
-    // görünsün. Boyutu sponsor zarfıyla aynı (envW * 1.35)
+    // girmez: üst banttan bir satır aşağıda, arama panelinin altında
+    // durur ki hem masaüstünde hem mobilde ilk ekranda görünsün.
+    // Boyutu sponsor zarfıyla aynı (envW * 1.35); tam ortaya değil,
+    // sponsor zarfları gibi hafif kaymış ve eğik durur ki duvara elle
+    // iliştirilmiş gibi görünsün
     const webW = Math.round(m.envW * 1.35);
     const webH = Math.round(webW * 0.75);
     const webreta = {
       w: webW,
       h: webH,
-      x: Math.round((wrapperW - webW) / 2),
-      y: Math.round(topOffset + m.rowStep * 1.15),
+      x: Math.round(wrapperW * 0.44 - webW / 2),
+      y: Math.round(topOffset + m.rowStep * 1.35),
+      rot: -7,
     };
 
     return {
@@ -2879,6 +2882,7 @@ export default function Home() {
               x={layout.webreta.x}
               y={layout.webreta.y}
               w={layout.webreta.w}
+              rot={layout.webreta.rot}
               z={1010}
               onOpen={() => setWebretaOpen(true)}
             />
