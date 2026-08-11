@@ -10,6 +10,7 @@
 
 import { useEffect, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { usePathname } from "next/navigation";
 import { currentUser } from "../lib/auth";
 import { fetchSettings, type InstagramSetting } from "../lib/api";
 
@@ -66,6 +67,7 @@ export default function SiteHeader({
   const [insta, setInsta] = useState<InstagramSetting | null>(null);
   // Hamburger menüsü (ss100) — 900px altında linkler buraya taşınır
   const [menuOpen, setMenuOpen] = useState(false);
+  const pathname = usePathname();
 
   // Önce önbellekten boya (ilk kareden itibaren doğru görünüm)...
   useLayoutEffect(() => {
@@ -87,6 +89,22 @@ export default function SiteHeader({
       writeCache({ insta: s.instagram });
     });
   }, []);
+
+  const logo = (
+    <a
+      href="/"
+      className="flex shrink-0 items-center"
+      aria-label="Manifest Duvarı — ana sayfa"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/logo.png"
+        alt="Manifest Duvarı"
+        className="h-14 w-auto md:h-16"
+        draggable={false}
+      />
+    </a>
+  );
 
   return (
     <header className="sticky top-0 z-[1500] flex h-16 shrink-0 items-center border-b border-neutral-300/70 bg-white/70 px-4 backdrop-blur md:h-18 min-[900px]:px-[6%]">
@@ -118,19 +136,11 @@ export default function SiteHeader({
         )}
       </div>
 
-      <a
-        href="/"
-        className="flex shrink-0 items-center"
-        aria-label="Manifest Duvarı — ana sayfa"
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/logo.png"
-          alt="Manifest Duvarı"
-          className="h-14 w-auto md:h-16"
-          draggable={false}
-        />
-      </a>
+      {/* Ana sayfada logo H1 olarak basılır: sayfanın başlığı "Manifest
+          Duvarı" (metni görselin alt'ından gelir). Diğer sayfaların kendi
+          H1'i olduğu için orada sade bir bağlantı kalır — tek sayfada iki
+          H1 olmasın. display:contents sayesinde yerleşim hiç değişmez */}
+      {pathname === "/" ? <h1 className="contents">{logo}</h1> : logo}
 
       {/* Sağ bölge: sayfa linkleri + üyelik durumu / hamburger — geniş
           ekranda sol bölge gibi kendi yarısında ortalanır */}

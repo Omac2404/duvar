@@ -3020,6 +3020,24 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Siteyi anlatan tanıtım metni — duvarın altındaki boşlukta durur.
+          Arama motorları için sayfadaki tek H2 başlığı da budur */}
+      {/* Punto yasal link barıyla aynı (11px): duvarın altında sessizce
+          dursun, tasarımın önüne geçmesin */}
+      <section className="mx-auto w-full max-w-2xl px-6 pb-4 pt-2 text-center">
+        <h2 className="text-[11px] font-bold text-neutral-600">
+          Manifest Duvarı Nedir?
+        </h2>
+        <p className="mx-auto mt-1.5 text-[11px] leading-relaxed text-neutral-500">
+          Manifest Duvarı, dileklerini yazıp koca bir duvara astığın online
+          dilek duvarı. Hayalini bir zarfa yazarsın, zarfın duvarda yerini
+          alır ve gören herkes sana şans diler. İster adınla ister anonim
+          paylaşırsın; ay ay geriye dönüp duvarın eski hâline de bakabilirsin.
+          İnancımız basit: bir dilek, paylaşıldıkça güçlenir. Sen de ücretsiz
+          bir zarf as, binlerce kişi hayaline tanıklık etsin.
+        </p>
+      </section>
+
       {/* Yükleme örtüsü — dilim beklerken logo + dönen halka */}
       <div
         aria-hidden={!wallLoading}
