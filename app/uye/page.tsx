@@ -375,7 +375,7 @@ export default function AuthPage() {
             </svg>
           </span>
           <p className="text-[14px] font-semibold leading-snug text-violet-900">
-            Manifest yazabilmek için{" "}
+            Manifest yazabilmek ve şans dileyebilmek için{" "}
             <span className="font-extrabold text-violet-700">
               üye olmalısınız
             </span>
