@@ -29,6 +29,8 @@ import {
 } from "./lib/wallData";
 import { WebretaCard, WebretaPopup } from "./components/WebretaEnvelope";
 import {
+  fetchWebretaLikes,
+  likeWebreta as apiLikeWebreta,
   fetchMyReactions,
   fetchReportedCodes,
   fetchSettings,
@@ -144,6 +146,9 @@ function persistCheer(code: string, delta: number) {
 // Görüntülenme: aynı cihaz aynı manifesti günde 1 kez sayar — zarfı
 // aç-kapa yaparak sayaç şişirilemez. Sayılan artışı (0/1) döndürür;
 // üye manifestine kalıcı yazılır (demo zarflarında oturumluk kalır)
+// Webreta zarfı beğenisi — girişsiz ziyaretçide tekillik bununla korunur
+const WEBRETA_LIKED_KEY = "mw_webreta_liked";
+
 const VIEWED_KEY = "mw_viewed";
 function registerView(code: string, notify = true): number {
   try {
@@ -2027,6 +2032,8 @@ export default function Home() {
   // Duvardaki sabit Webreta zarfı — admin panelden sergilenir/kapatılır
   const [webretaOn, setWebretaOn] = useState(false);
   const [webretaOpen, setWebretaOpen] = useState(false);
+  const [webretaLikes, setWebretaLikes] = useState(0);
+  const [webretaLiked, setWebretaLiked] = useState(false);
   // Kayan şerit — yazı ve tur süresi admin Ayarlar'dan; yazı boşsa gizli
   const [marquee, setMarquee] = useState<{ text: string; seconds: number }>({
     text: "",
@@ -2047,7 +2054,30 @@ export default function Home() {
         setFYear(s.year);
       }
     });
+    // Beğeni sayısı; girişsiz ziyaretçide "beğendim" bilgisi yerelde tutulur
+    fetchWebretaLikes().then((r) => {
+      setWebretaLikes(r.likes);
+      let localLiked = false;
+      try {
+        localLiked = localStorage.getItem(WEBRETA_LIKED_KEY) === "1";
+      } catch {}
+      setWebretaLiked(r.liked || localLiked);
+    });
   }, []);
+
+  // Webreta zarfını beğen — sunucu girişli üyede tekilliği korur,
+  // girişsiz ziyaretçide yerel kayıt ikinci beğeniyi engeller
+  function likeWebretaOnce() {
+    if (webretaLiked) return;
+    setWebretaLiked(true);
+    setWebretaLikes((n) => n + 1);
+    try {
+      localStorage.setItem(WEBRETA_LIKED_KEY, "1");
+    } catch {}
+    void apiLikeWebreta().then((r) => {
+      if (typeof r.likes === "number") setWebretaLikes(r.likes);
+    });
+  }
   const [selected, setSelected] = useState<{
     env: Envelope;
     origin: Origin;
@@ -2238,18 +2268,17 @@ export default function Home() {
     }
 
     // Webreta zarfı — duvardaki tek sabit zarf. Günlük karıştırmaya
-    // girmez: üst banttan bir satır aşağıda, arama panelinin altında
-    // durur ki hem masaüstünde hem mobilde ilk ekranda görünsün.
-    // Boyutu sponsor zarfıyla aynı (envW * 1.35); tam ortaya değil,
-    // sponsor zarfları gibi hafif kaymış ve eğik durur ki duvara elle
-    // iliştirilmiş gibi görünsün
-    const webW = Math.round(m.envW * 1.35);
-    const webH = Math.round(webW * 0.75);
+    // girmez ve boyutu diğer zarflarla birebir aynıdır. Izgaranın sabit
+    // bir gözüne oturur (2. satır, ortadaki sütun): hep aynı sırada
+    // durur, hem masaüstünde hem mobilde ilk ekranda görünür. Diğer
+    // zarflar gibi hafifçe eğiktir ki duvara elle iliştirilmiş dursun
+    const webCol = Math.floor((cols - 1) / 2);
+    const webRow = 1;
     const webreta = {
-      w: webW,
-      h: webH,
-      x: Math.round(wrapperW * 0.44 - webW / 2),
-      y: Math.round(topOffset + m.rowStep * 1.35),
+      w: m.envW,
+      h: m.envH,
+      x: Math.round(2 + webCol * m.colStep),
+      y: Math.round(topOffset + webRow * m.rowStep),
       rot: -7,
     };
 
@@ -2411,7 +2440,10 @@ export default function Home() {
         p.x += dx * push;
         p.y += dy * push;
       }
-      // Webreta zarfı sabit durur, komşuları ona yer açar
+      // Webreta zarfı sabit gözünde durur, komşuları ona yer açar.
+      // Kendi gözündeki zarf neredeyse tam altında kalacağı için, iki
+      // merkez çakıştığında sabit bir yöne (sola) itilir — yoksa yön
+      // belirsiz kalıp zarf Webreta'nın altında gizlenirdi
       if (webretaOn) {
         const wb = m.webreta;
         const wcx = wb.x + wb.w / 2;
@@ -2423,10 +2455,16 @@ export default function Home() {
           dy / (wb.h / 2 + m.envH / 2 + 12),
         );
         if (d < 1) {
-          const len = Math.hypot(dx, dy) || 1;
+          let len = Math.hypot(dx, dy);
+          if (len < m.envW * 0.2) {
+            // Tam çakışma: sola doğru tam bir zarf boyu kaydır
+            dx = -1;
+            dy = 0;
+            len = 1;
+          }
           dx /= len;
           dy /= len;
-          const push = (1 - d) * m.envW * 0.42;
+          const push = (1 - d) * m.envW * 0.95;
           p.x += dx * push;
           p.y += dy * push;
         }
@@ -2884,6 +2922,7 @@ export default function Home() {
               w={layout.webreta.w}
               rot={layout.webreta.rot}
               z={1010}
+              likes={webretaLikes}
               onOpen={() => setWebretaOpen(true)}
             />
           )}
@@ -2910,7 +2949,14 @@ export default function Home() {
         </div>
       </section>
 
-      {webretaOpen && <WebretaPopup onClose={() => setWebretaOpen(false)} />}
+      {webretaOpen && (
+        <WebretaPopup
+          likes={webretaLikes}
+          liked={webretaLiked}
+          onLike={likeWebretaOnce}
+          onClose={() => setWebretaOpen(false)}
+        />
+      )}
 
       {/* Yükleme örtüsü — dilim beklerken logo + dönen halka */}
       <div

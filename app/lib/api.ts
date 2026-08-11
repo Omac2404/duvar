@@ -156,6 +156,26 @@ export async function fetchSettings(): Promise<PublicSettings> {
   }
 }
 
+// ── Webreta zarfı beğenileri ─────────────────────────────────────────────
+
+export async function fetchWebretaLikes(): Promise<{
+  likes: number;
+  liked: boolean;
+}> {
+  try {
+    const res = await fetch("/api/webreta", { cache: "no-store" });
+    return await json<{ likes: number; liked: boolean }>(res);
+  } catch {
+    return { likes: 0, liked: false };
+  }
+}
+
+export function likeWebreta() {
+  return post<{ ok: boolean; already?: boolean; likes?: number }>(
+    "/api/webreta",
+  );
+}
+
 // ── Merak Edilenler (SSS) + Bize Ulaşın ──────────────────────────────────
 
 export type FaqItem = { q: string; a: string };
@@ -506,6 +526,14 @@ export function adminSaveSettings(patch: {
 
 export function adminResetMembers() {
   return post<{ ok: boolean }>("/api/admin/reset");
+}
+
+// Webreta zarfına toplu (bot) beğeni ekler
+export function adminAddWebretaLikes(add: number) {
+  return post<{ ok: boolean; likes?: number; error?: string }>(
+    "/api/admin/webreta",
+    { add },
+  );
 }
 
 // Duvar sırasını elle karıştırır (gece 00:00'ı beklemeden)

@@ -30,6 +30,23 @@ const caveat = Caveat({
   subsets: ["latin"],
 });
 
+// Google arama sonuçlarında favicon göstermek için ikonun en az 48x48
+// olması ve <link rel="icon" ... sizes> ile boyutunun bildirilmesi
+// gerekiyor (16x16/32x32 klasik favicon'lar kullanılmıyor). Admin'in
+// yüklediği ikon 192x192 kare saklanır — 48'in katı; hiç yüklenmemişse
+// public/icon.png (192x192) devreye girer. /favicon.ico da statik olarak
+// aynı kare ikonu döndürür ki doğrudan açıldığında boş kalmasın
+function iconLinks(src: string) {
+  return {
+    icon: [
+      { url: src, sizes: "48x48", type: "image/png" },
+      { url: src, sizes: "192x192", type: "image/png" },
+    ],
+    shortcut: [{ url: "/favicon.ico" }],
+    apple: [{ url: src, sizes: "180x180", type: "image/png" }],
+  };
+}
+
 // Başlık, açıklama ve favicon admin panelin Ayarlar > SEO bölümünden gelir
 export async function generateMetadata(): Promise<Metadata> {
   try {
@@ -39,12 +56,17 @@ export async function generateMetadata(): Promise<Metadata> {
     return {
       title: seo.title,
       description: seo.description,
-      // Favicon admin'den yüklendiyse o, yoksa site logosu kullanılır
-      icons: { icon: fav ? `/api/favicon?v=${fav.length}` : "/logo.png" },
+      metadataBase: new URL("https://manifestduvari.com"),
+      // Favicon admin'den yüklendiyse o, yoksa kare site ikonu kullanılır
+      icons: iconLinks(fav ? `/api/favicon?v=${fav.length}` : "/icon.png"),
     };
   } catch {
     // DB'ye ulaşılamazsa varsayılanlarla açılır
-    return { title: "Manifest Duvarı", description: "Manifest Duvarı" };
+    return {
+      title: "Manifest Duvarı",
+      description: "Manifest Duvarı",
+      icons: iconLinks("/icon.png"),
+    };
   }
 }
 

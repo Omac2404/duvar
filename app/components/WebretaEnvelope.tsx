@@ -41,6 +41,7 @@ export function WebretaCard({
   w,
   rot,
   z,
+  likes,
   onOpen,
 }: {
   x: number;
@@ -48,6 +49,7 @@ export function WebretaCard({
   w: number;
   rot: number;
   z: number;
+  likes: number;
   onOpen: () => void;
 }) {
   // Zarf içi ölçüler genişlikle orantılı — diğer zarflardaki fs ile aynı
@@ -58,7 +60,10 @@ export function WebretaCard({
         type="button"
         onClick={onOpen}
         style={{ background: BODY_BG, rotate: `${rot}deg` }}
-        className="relative block aspect-[4/3] w-full cursor-pointer touch-manipulation rounded-[3px] shadow-[0_6px_20px_rgba(44,74,125,0.45)] transition-all duration-200 hover:scale-125 hover:shadow-[0_14px_34px_rgba(44,74,125,0.55)]"
+        // Gölge parlak (özel seri) zarflarla birebir aynı: mavi zarf
+        // kendi renginde yumuşak bir gölgeyle havada duruyor gibiydi,
+        // sponsor zarfı gibi duvara oturması için aynı gölgeye çekildi
+        className="relative block aspect-[4/3] w-full cursor-pointer touch-manipulation rounded-[3px] shadow-[0_4px_14px_rgba(0,0,0,0.35)] transition-all duration-200 hover:scale-135 hover:shadow-[0_12px_30px_rgba(0,0,0,0.3)]"
         aria-label="Webreta Web Teknolojileri — mesajı oku"
       >
         {/* Kapak üçgeni */}
@@ -78,7 +83,20 @@ export function WebretaCard({
           }}
         />
         {/* Beyaz amblem — sponsor logosuyla aynı yerde */}
-        <Amblem className="pointer-events-none absolute left-1/2 top-[66%] w-[34%] -translate-x-1/2 -translate-y-1/2 select-none" />
+        <Amblem className="pointer-events-none absolute left-1/2 top-[62%] w-[30%] -translate-x-1/2 -translate-y-1/2 select-none" />
+        {/* Beğeni sayacı — diğer zarflardaki şans rozetinin yerinde */}
+        <span
+          className="pointer-events-none absolute inset-x-0 bottom-[22%] flex items-center justify-center leading-none text-white/90"
+          style={{ gap: 3 * fs }}
+        >
+          <span style={{ fontSize: Math.max(8, 9.5 * fs) }}>♥</span>
+          <span
+            className="font-semibold"
+            style={{ fontSize: Math.max(8.5, 10 * fs) }}
+          >
+            {likes.toLocaleString("tr-TR")}
+          </span>
+        </span>
         {/* Ad — sponsor zarfındaki gibi zarfın alt kenarında */}
         <span
           className="absolute inset-x-0 bottom-[4%] truncate px-1 text-center font-hand leading-none font-semibold text-white"
@@ -91,8 +109,19 @@ export function WebretaCard({
   );
 }
 
-// Mektup — zarfa tıklanınca açılan pencere
-export function WebretaPopup({ onClose }: { onClose: () => void }) {
+// Mektup — zarfa tıklanınca açılan pencere. Şans dileme yok; yerine
+// tek bir "Beğen" butonu var (aynı cihazdan bir kez sayılır)
+export function WebretaPopup({
+  likes,
+  liked,
+  onLike,
+  onClose,
+}: {
+  likes: number;
+  liked: boolean;
+  onLike: () => void;
+  onClose: () => void;
+}) {
   const [shown, setShown] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setShown(true), 10);
@@ -152,6 +181,26 @@ export function WebretaPopup({ onClose }: { onClose: () => void }) {
           >
             Webreta
           </p>
+          {/* Beğen — şans dileme yerine tek buton */}
+          <div className="mt-5 flex items-center justify-center gap-3 border-t border-neutral-200/70 pt-4">
+            <button
+              type="button"
+              onClick={onLike}
+              disabled={liked}
+              className={`flex cursor-pointer items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition-all active:scale-[0.98] disabled:cursor-default ${
+                liked
+                  ? "bg-rose-50 text-rose-500"
+                  : "text-white hover:brightness-110"
+              }`}
+              style={liked ? undefined : { background: BODY_BG }}
+            >
+              <span className="text-base">{liked ? "♥" : "♡"}</span>
+              {liked ? "Beğendin" : "Beğen"}
+            </button>
+            <span className="text-sm font-semibold text-neutral-500">
+              {likes.toLocaleString("tr-TR")} beğeni
+            </span>
+          </div>
         </div>
       </div>
     </div>

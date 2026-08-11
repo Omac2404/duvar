@@ -48,6 +48,7 @@ import {
   adminDeleteSponsor,
   adminRemoveReport,
   adminReports,
+  adminAddWebretaLikes,
   adminResetMembers,
   adminShuffleWall,
   adminSaveSettings,
@@ -637,6 +638,9 @@ export default function AdminPage() {
   const [testMode, setTestMode] = useState(false);
   // Duvardaki sabit Webreta zarfı sergileniyor mu
   const [webreta, setWebreta] = useState(true);
+  // Webreta zarfi begeni sayaci + bot begeni girdisi
+  const [webLikes, setWebLikes] = useState(0);
+  const [webLikeAmt, setWebLikeAmt] = useState("");
   // Duvarı elle karıştır — istek sürerken buton kilitlenir, bitince kısa
   // süre onay yazısı gösterilir
   const [shuffling, setShuffling] = useState(false);
@@ -785,6 +789,11 @@ export default function AdminPage() {
       adminContactMessages(),
     ]).then(([u, r, s, m, sp, cm]) => {
       void adminStats().then(setStat);
+      // Webreta zarfinin guncel begeni sayisi
+      void fetch("/api/webreta")
+        .then((x) => x.json())
+        .then((d) => setWebLikes(Number(d?.likes) || 0))
+        .catch(() => {});
       setUsers(u);
       setReports(r);
       setModRuns(m);
@@ -896,14 +905,22 @@ export default function AdminPage() {
   }
 
   // Favicon dosyası → 64px PNG data URL
+  // Favicon 192x192 kare PNG olarak saklanır (48'in katı — Google arama
+  // sonuçlarında 48x48'in altındaki ikonları kullanmıyor). Görsel kare
+  // değilse ezilmez: oranı korunarak ortalanır, kenarlar saydam kalır
   function onFaviconFile(file: File) {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
+      const S = 192;
       const cv = document.createElement("canvas");
-      cv.width = 64;
-      cv.height = 64;
-      cv.getContext("2d")!.drawImage(img, 0, 0, 64, 64);
+      cv.width = S;
+      cv.height = S;
+      const ctx = cv.getContext("2d")!;
+      const scale = Math.min(S / img.width, S / img.height);
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      ctx.drawImage(img, Math.round((S - w) / 2), Math.round((S - h) / 2), w, h);
       setSeoSaved(false);
       setFavData(cv.toDataURL("image/png"));
       URL.revokeObjectURL(url);
@@ -3240,24 +3257,54 @@ export default function AdminPage() {
                     zarfı sergilenir. Kapatılırsa duvardan tamamen kalkar.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = !webreta;
-                    setWebreta(next);
-                    void adminSaveSettings({ webreta: next });
-                  }}
-                  aria-label="Webreta zarfını sergile/kapat"
-                  className={`relative h-7 w-12 cursor-pointer rounded-full transition-colors ${
-                    webreta ? "bg-sky-600" : "bg-neutral-300"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${
-                      webreta ? "left-[22px]" : "left-0.5"
-                    }`}
+                <div className="flex items-center gap-2">
+                  {/* Bot beğeni — girilen miktar beğeni sayacına eklenir */}
+                  <input
+                    value={webLikeAmt}
+                    onChange={(e) =>
+                      setWebLikeAmt(e.target.value.replace(/[^\d-]/g, ""))
+                    }
+                    placeholder="beğeni"
+                    inputMode="numeric"
+                    className="w-20 rounded-lg border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-700 outline-none placeholder:text-neutral-300"
                   />
-                </button>
+                  <button
+                    type="button"
+                    disabled={!Number(webLikeAmt)}
+                    onClick={() => {
+                      const n = Number(webLikeAmt);
+                      if (!n) return;
+                      void adminAddWebretaLikes(n).then((r) => {
+                        if (typeof r.likes === "number") setWebLikes(r.likes);
+                      });
+                      setWebLikeAmt("");
+                    }}
+                    className="cursor-pointer rounded-full bg-sky-100 px-2.5 py-1.5 text-[11px] font-semibold text-sky-700 transition-colors hover:bg-sky-200 disabled:cursor-default disabled:opacity-40"
+                  >
+                    Gönder
+                  </button>
+                  <span className="whitespace-nowrap text-[11px] font-semibold text-neutral-500">
+                    ♥ {webLikes.toLocaleString("tr-TR")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !webreta;
+                      setWebreta(next);
+                      void adminSaveSettings({ webreta: next });
+                    }}
+                    aria-label="Webreta zarfını sergile/kapat"
+                    className={`relative h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors ${
+                      webreta ? "bg-sky-600" : "bg-neutral-300"
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${
+                        webreta ? "left-[22px]" : "left-0.5"
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
 
               {/* Duvarı elle karıştır — normalde sıra her gece 00:00'da
