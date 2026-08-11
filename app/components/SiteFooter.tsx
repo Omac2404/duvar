@@ -6,7 +6,8 @@
 
 export default function SiteFooter() {
   return (
-    <footer className="mt-auto flex min-h-9 flex-wrap items-center justify-center gap-x-5 gap-y-1 border-t border-neutral-200 bg-white/80 px-4 py-1.5 backdrop-blur max-[900px]:hidden">
+    // Zemin ve çerçeve yok: bar gibi durmasın, sayfanın arka planını alsın
+    <footer className="mt-auto flex min-h-9 flex-wrap items-center justify-center gap-x-5 gap-y-1 bg-transparent px-4 py-1.5 max-[900px]:hidden">
       <a
         href="/gizlilik"
         className="text-[11px] font-medium text-neutral-500 transition-colors hover:text-neutral-800"
