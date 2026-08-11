@@ -102,6 +102,8 @@ export type Envelope = {
   bottled?: boolean; // 150+ şans: manifest şişede sergileniyor
   boxed?: boolean; // 250+ şans: manifest hediye kutusunda sergileniyor
   ribbon?: number; // şişe kurdele rengi (üye zarfında seçilen özel renk)
+  webreta?: boolean; // duvardaki tek sabit zarf (Webreta) — yeri değişmez,
+  // diğer her şeyi (kart, animasyon, mektup) sıradan zarflarla aynıdır
   sponsored?: boolean; // marka zarfı (native reklam)
   sponsor?: SponsorPub; // sponsorlu zarfın kampanya yükü
   realized?: boolean; // manifest gerçekleşti: şans dondurulur, rozet taşır

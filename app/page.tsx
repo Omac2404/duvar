@@ -27,7 +27,7 @@ import {
   sponsorColor,
   type Envelope,
 } from "./lib/wallData";
-import { WebretaCard, WebretaPopup } from "./components/WebretaEnvelope";
+import { WEBRETA_COLOR, WEBRETA_TEXT } from "./components/WebretaEnvelope";
 import {
   fetchWebretaLikes,
   likeWebreta as apiLikeWebreta,
@@ -135,6 +135,17 @@ function myReactions(): Promise<MyReactions> {
 function persistLuck(code: string, delta: number) {
   void myReactions().then((r) => r.luck.add(code));
   apiReact(code, "luck", delta);
+}
+
+// Webreta zarfı beğenisi — şans sisteminden ayrı sayaç. Girişli üyede
+// tekillik sunucuda, girişsiz ziyaretçide yerel kayıtla korunur
+const WEBRETA_LIKED_MEM = { liked: false };
+function persistWebretaLike() {
+  WEBRETA_LIKED_MEM.liked = true;
+  try {
+    localStorage.setItem(WEBRETA_LIKED_KEY, "1");
+  } catch {}
+  void apiLikeWebreta().catch(() => {});
 }
 
 // Tebrik de backend'e yazılır (demo zarflarında no-op)
@@ -477,6 +488,17 @@ const EnvelopeCard = memo(function EnvelopeCard({
             Gerçekleşti
           </span>
         )}
+        {/* Webreta zarfı — sponsor logosunun yerinde beyaz amblem.
+            Bunun dışında her şeyi sıradan zarflarla aynıdır */}
+        {envelope.webreta && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src="/webreta-amblem.png"
+            alt=""
+            draggable={false}
+            className="pointer-events-none absolute left-1/2 top-[70%] w-[26%] -translate-x-1/2 -translate-y-1/2 select-none"
+          />
+        )}
         {/* Sponsor zarfı: kampanya logosu + etiket pill'i (konum/boyut
             admin panelden ayarlanır) */}
         {envelope.sponsored && envelope.sponsor && (
@@ -518,7 +540,8 @@ const EnvelopeCard = memo(function EnvelopeCard({
                 className="opacity-70 drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]"
                 style={{ fontSize: Math.max(10, 9 * fs) }}
               >
-                ⭐
+                {/* Webreta zarfı şans değil beğeni toplar */}
+                {envelope.webreta ? "♥" : "⭐"}
               </span>
               <span
                 className="font-medium opacity-80"
@@ -1323,7 +1346,9 @@ function ManifestPopup({
   const [stage, setStage] = useState<"origin" | "center" | "open">("origin");
   // Şans dileme / tebrik (demo: yerel state, backend'de gerçek sayaca bağlanır)
   const [luck, setLuck] = useState(envelope.luck ?? 0);
-  const [wished, setWished] = useState(false);
+  const [wished, setWished] = useState(
+    () => !!envelope.webreta && WEBRETA_LIKED_MEM.liked,
+  );
   const [cheers, setCheers] = useState(envelope.cheers ?? 0);
   const [cheered, setCheered] = useState(false);
   // Test modu (admin panelden): şans sınırsız ve +10'ar dilenir
@@ -1337,13 +1362,16 @@ function ManifestPopup({
   useEffect(() => {
     currentUser().then((u) => setMember(!!u));
   }, []);
-  // Bu zarfa daha önce şans dilenmiş/tebrik edilmişse yıldız dolu başlar
+  // Bu zarfa daha önce şans dilenmiş/tebrik edilmişse yıldız dolu başlar.
+  // Webreta zarfının beğeni durumu ayrı sayaçta tutulur ve pencere zaten
+  // sayfa yüklendikten sonra açıldığı için doğrudan başlangıç değeridir
   useEffect(() => {
+    if (envelope.webreta) return;
     myReactions().then((r) => {
       if (r.luck.has(envelope.code)) setWished(true);
       if (r.cheer.has(envelope.code)) setCheered(true);
     });
-  }, [envelope.code]);
+  }, [envelope.code, envelope.webreta]);
   // Kapak, mektup dışarıdayken arkada (1), mektup içerideyken önde (30) durur
   const [flapZ, setFlapZ] = useState(30);
   const closingRef = useRef(false);
@@ -1709,7 +1737,9 @@ function ManifestPopup({
                 {envelope.date}
               </span>
             )}
-            {!envelope.sponsored && (
+            {/* Webreta zarfında görüntülenme sayacı tutulmaz — sayı hep
+                sıfır görünmesin diye bu satır yalnızca orada gizlenir */}
+            {!envelope.sponsored && !envelope.webreta && (
               <>
                 <span className="h-px w-full bg-current opacity-25" />
                 <span className="flex items-center gap-1.5">
@@ -1729,7 +1759,7 @@ function ManifestPopup({
                 </span>
               </>
             )}
-            {!envelope.sponsored && (
+            {!envelope.sponsored && !envelope.webreta && (
               <ReportButton
                 code={envelope.code}
                 name={envelope.name}
@@ -1756,10 +1786,12 @@ function ManifestPopup({
               }}
             >
               <span className="text-[11px] drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]">
-                ⭐
+                {envelope.webreta ? "♥" : "⭐"}
               </span>
-              <b className="font-semibold">{luck}</b> kişi şans{" "}
-              {envelope.realized ? "dilemişti" : "diledi"}
+              <b className="font-semibold">{luck}</b>{" "}
+              {envelope.webreta
+                ? "kişi beğendi"
+                : `kişi şans ${envelope.realized ? "dilemişti" : "diledi"}`}
             </span>
             {envelope.realized ? (
               <>
@@ -1843,6 +1875,16 @@ function ManifestPopup({
                 <button
                   type="button"
                   onClick={() => {
+                    // Webreta zarfında şans yerine beğeni: giriş şartı yok,
+                    // sayaç aynı yerde durur, buton aynı biçimde davranır
+                    if (envelope.webreta) {
+                      if (wished) return;
+                      setWished(true);
+                      setLuck((n) => n + 1);
+                      envelope.luck += 1;
+                      persistWebretaLike();
+                      return;
+                    }
                     if (!member && !testMode) {
                       window.location.href = "/uye";
                       return;
@@ -1873,9 +1915,21 @@ function ManifestPopup({
                       wished ? "scale-125" : ""
                     }`}
                   >
-                    {wished ? "⭐" : "☆"}
+                    {envelope.webreta
+                      ? wished
+                        ? "♥"
+                        : "♡"
+                      : wished
+                        ? "⭐"
+                        : "☆"}
                   </span>
-                  {testMode ? "Şans dile +10" : "Şans dile"}
+                  {envelope.webreta
+                    ? wished
+                      ? "Beğendin"
+                      : "Beğen"
+                    : testMode
+                      ? "Şans dile +10"
+                      : "Şans dile"}
                 </button>
               </span>
             )}
@@ -2031,9 +2085,7 @@ export default function Home() {
   const [ads, setAds] = useState(false);
   // Duvardaki sabit Webreta zarfı — admin panelden sergilenir/kapatılır
   const [webretaOn, setWebretaOn] = useState(false);
-  const [webretaOpen, setWebretaOpen] = useState(false);
   const [webretaLikes, setWebretaLikes] = useState(0);
-  const [webretaLiked, setWebretaLiked] = useState(false);
   // Kayan şerit — yazı ve tur süresi admin Ayarlar'dan; yazı boşsa gizli
   const [marquee, setMarquee] = useState<{ text: string; seconds: number }>({
     text: "",
@@ -2061,23 +2113,35 @@ export default function Home() {
       try {
         localLiked = localStorage.getItem(WEBRETA_LIKED_KEY) === "1";
       } catch {}
-      setWebretaLiked(r.liked || localLiked);
+      WEBRETA_LIKED_MEM.liked = r.liked || localLiked;
     });
   }, []);
 
-  // Webreta zarfını beğen — sunucu girişli üyede tekilliği korur,
-  // girişsiz ziyaretçide yerel kayıt ikinci beğeniyi engeller
-  function likeWebretaOnce() {
-    if (webretaLiked) return;
-    setWebretaLiked(true);
-    setWebretaLikes((n) => n + 1);
-    try {
-      localStorage.setItem(WEBRETA_LIKED_KEY, "1");
-    } catch {}
-    void apiLikeWebreta().then((r) => {
-      if (typeof r.likes === "number") setWebretaLikes(r.likes);
-    });
-  }
+  // Webreta zarfı — sıradan bir zarfın aynısı: aynı kart, aynı açılma
+  // animasyonu, aynı mektup. Yalnızca yeri sabittir ve şans yerine
+  // beğeni toplar. Kimlik (id) çakışmasın diye çok büyük bir sayı alır
+  const webretaEnv = useMemo<Envelope>(
+    () => ({
+      id: 9_000_001,
+      name: "Webreta Web Teknolojileri",
+      manifest: WEBRETA_TEXT,
+      jx: 0.5,
+      jy: 0.5,
+      zr: 3,
+      rotation: -7,
+      color: WEBRETA_COLOR,
+      luck: webretaLikes,
+      cheers: 0,
+      views: 0,
+      code: "00001WB",
+      date: "8 Ağustos 2026",
+      year: 2026,
+      month: 8,
+      ts: Date.UTC(2026, 7, 8, 12),
+      webreta: true,
+    }),
+    [webretaLikes],
+  );
   const [selected, setSelected] = useState<{
     env: Envelope;
     origin: Origin;
@@ -2914,16 +2978,16 @@ export default function Home() {
             </button>
           ))}
 
-          {/* Webreta zarfı — sabit yerinde, komşularının üstünde durur */}
-          {webretaOn && (
-            <WebretaCard
-              x={layout.webreta.x}
-              y={layout.webreta.y}
-              w={layout.webreta.w}
-              rot={layout.webreta.rot}
-              z={1010}
-              likes={webretaLikes}
-              onOpen={() => setWebretaOpen(true)}
+          {/* Webreta zarfı — sıradan bir zarf gibi çizilir ve açılır;
+              tek farkı yerinin sabit olması */}
+          {webretaOn && webretaEnv && (
+            <EnvelopeCard
+              envelope={webretaEnv}
+              pos={{ x: layout.webreta.x, y: layout.webreta.y, z: 1010 }}
+              envW={layout.envW}
+              hidden={selected?.env.id === webretaEnv.id}
+              highlighted={false}
+              onOpen={(e, origin) => setSelected({ env: e, origin })}
             />
           )}
 
@@ -2948,15 +3012,6 @@ export default function Home() {
           ))}
         </div>
       </section>
-
-      {webretaOpen && (
-        <WebretaPopup
-          likes={webretaLikes}
-          liked={webretaLiked}
-          onLike={likeWebretaOnce}
-          onClose={() => setWebretaOpen(false)}
-        />
-      )}
 
       {/* Yükleme örtüsü — dilim beklerken logo + dönen halka */}
       <div
