@@ -496,7 +496,7 @@ const EnvelopeCard = memo(function EnvelopeCard({
             src="/webreta-amblem.png"
             alt=""
             draggable={false}
-            className="pointer-events-none absolute left-1/2 top-[70%] w-[26%] -translate-x-1/2 -translate-y-1/2 select-none"
+            className="pointer-events-none absolute left-[26%] top-[52%] w-[34%] -translate-x-1/2 -translate-y-1/2 select-none"
           />
         )}
         {/* Sponsor zarfı: kampanya logosu + etiket pill'i (konum/boyut
@@ -538,7 +538,12 @@ const EnvelopeCard = memo(function EnvelopeCard({
             <span className="flex flex-col items-center gap-[1px]">
               <span
                 className="opacity-70 drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]"
-                style={{ fontSize: Math.max(10, 9 * fs) }}
+                style={{
+                  fontSize: Math.max(10, 9 * fs),
+                  // ♥ emoji değil düz karakter: rengi verilmezse siyah
+                  // kalıyor ve koyu zarfta okunmuyordu
+                  ...(envelope.webreta ? { color: envelope.color.ink } : {}),
+                }}
               >
                 {/* Webreta zarfı şans değil beğeni toplar */}
                 {envelope.webreta ? "♥" : "⭐"}
@@ -2337,7 +2342,9 @@ export default function Home() {
     // durur, hem masaüstünde hem mobilde ilk ekranda görünür. Diğer
     // zarflar gibi hafifçe eğiktir ki duvara elle iliştirilmiş dursun
     const webCol = Math.floor((cols - 1) / 2);
-    const webRow = 1;
+    // Mobilde (3 sütun) üst satırları arama paneli ve şerit örtüyor;
+    // zarf 4. satıra iner, orada hem ortalı hem de kaydırmadan görünür
+    const webRow = cols <= 3 ? 4 : 1;
     const webreta = {
       w: m.envW,
       h: m.envH,
