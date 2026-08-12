@@ -2816,11 +2816,15 @@ export default function Home() {
         </div>
       </SiteHeader>
 
-      {/* Zarf duvarı — aşağı kaydırılabilir, satırlar görünür oldukça yüklenir */}
+      {/* Zarf duvarı — aşağı kaydırılabilir, satırlar görünür oldukça yüklenir.
+          minHeight: duvarın yüksekliği zarf sayısından hesaplanıyor; veri
+          gelmeden önce sıfıra yakın kalıyor ve altındaki tanıtım metni
+          ekranın ortasına fırlıyordu. Alt sınırla metin baştan aşağıda
+          durur, duvar yüklenince yerinden zıplamaz */}
       <section
         ref={sectionRef}
         className="relative overflow-hidden"
-        style={{ height: layout.sectionH }}
+        style={{ height: layout.sectionH, minHeight: "100vh" }}
       >
         <div
           className="relative mx-auto h-full"
