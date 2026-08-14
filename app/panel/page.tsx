@@ -2333,7 +2333,7 @@ export default function PanelPage() {
                           setDraftName(stripEmoji(e.target.value).slice(0, 20))
                         }
                         autoFocus
-                        placeholder="Rumuzun… (emojisiz)"
+                        placeholder="Rumuzun…"
                         className="w-full bg-transparent font-hand text-[26px] text-neutral-800 outline-none placeholder:text-neutral-300 max-[520px]:text-[22px]"
                       />
                       <span className="shrink-0 pb-1 text-[10px] text-neutral-300">
